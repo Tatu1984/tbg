@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,16 +20,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Store, Printer, CreditCard, Bell } from "lucide-react";
+import { Store, Printer, CreditCard, Bell, FileText, Landmark } from "lucide-react";
 import { toast } from "sonner";
+import {
+  type StoreSettings,
+  getStoreSettings,
+  saveStoreSettings,
+} from "@/config/store-settings";
 
 export default function SettingsPage() {
+  const [settings, setSettings] = useState<StoreSettings | null>(null);
+
+  useEffect(() => {
+    setSettings(getStoreSettings());
+  }, []);
+
+  if (!settings) return null;
+
+  function update<K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) {
+    setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }
+
+  function handleSave() {
+    if (settings) {
+      saveStoreSettings(settings);
+      toast.success("Settings saved successfully");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">
-          Manage store configuration and preferences
+          Manage store configuration, invoice details and preferences
         </p>
       </div>
 
@@ -37,6 +62,14 @@ export default function SettingsPage() {
           <TabsTrigger value="store" className="gap-2">
             <Store className="h-4 w-4" />
             Store
+          </TabsTrigger>
+          <TabsTrigger value="invoice" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Invoice
+          </TabsTrigger>
+          <TabsTrigger value="bank" className="gap-2">
+            <Landmark className="h-4 w-4" />
+            Bank
           </TabsTrigger>
           <TabsTrigger value="printer" className="gap-2">
             <Printer className="h-4 w-4" />
@@ -52,60 +85,197 @@ export default function SettingsPage() {
           </TabsTrigger>
         </TabsList>
 
+        {/* ── Store Information ──────────────────────────────── */}
         <TabsContent value="store">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Store Information</CardTitle>
               <CardDescription>
-                Basic details shown on invoices and the website
+                These details appear on the invoice header
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 space-y-2">
+                  <Label>Store Name</Label>
+                  <Input
+                    value={settings.storeName}
+                    onChange={(e) => update("storeName", e.target.value)}
+                  />
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Address</Label>
+                  <Input
+                    value={settings.address}
+                    onChange={(e) => update("address", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>City</Label>
+                  <Input
+                    value={settings.city}
+                    onChange={(e) => update("city", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>State</Label>
+                  <Input
+                    value={settings.state}
+                    onChange={(e) => update("state", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Pincode</Label>
+                  <Input
+                    value={settings.pincode}
+                    onChange={(e) => update("pincode", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>State Code</Label>
+                  <Input
+                    value={settings.stateCode}
+                    onChange={(e) => update("stateCode", e.target.value)}
+                  />
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <Label>Phone Numbers</Label>
+                  <Input
+                    value={settings.phones}
+                    onChange={(e) => update("phones", e.target.value)}
+                    placeholder="+91 98313 19291 / +91 87772 77467"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    value={settings.email}
+                    onChange={(e) => update("email", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Website</Label>
+                  <Input
+                    value={settings.website}
+                    onChange={(e) => update("website", e.target.value)}
+                  />
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <Label>GSTIN</Label>
+                  <Input
+                    value={settings.gstin}
+                    onChange={(e) => update("gstin", e.target.value)}
+                    placeholder="e.g. 19AAPFT7973E1ZF"
+                    className="font-mono"
+                  />
+                </div>
+              </div>
+              <Button onClick={handleSave}>Save Changes</Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Invoice Settings ──────────────────────────────── */}
+        <TabsContent value="invoice">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Invoice Configuration</CardTitle>
+              <CardDescription>
+                Invoice numbering and tax defaults
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Store Name</Label>
-                  <Input defaultValue="The Biker Genome" />
+                  <Label>Regular Invoice Prefix</Label>
+                  <Input
+                    value={settings.invoicePrefix}
+                    onChange={(e) => update("invoicePrefix", e.target.value)}
+                    placeholder="TBG"
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>GST Number</Label>
-                  <Input defaultValue="29AABCT1234M1ZR" />
+                  <Label>Cash Invoice Prefix</Label>
+                  <Input
+                    value={settings.cashInvoicePrefix}
+                    onChange={(e) => update("cashInvoicePrefix", e.target.value)}
+                    placeholder="CS"
+                  />
                 </div>
-                <div className="space-y-2">
-                  <Label>Phone</Label>
-                  <Input defaultValue="+91 98765 43210" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input defaultValue="store@thebikergenome.com" />
-                </div>
-                <div className="col-span-2 space-y-2">
-                  <Label>Address</Label>
-                  <Input defaultValue="123 MG Road, Bangalore, Karnataka - 560001" />
-                </div>
-              </div>
-              <Separator />
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Default GST %</Label>
-                  <Input type="number" defaultValue="18" />
+                  <Input
+                    type="number"
+                    value={settings.defaultGst}
+                    onChange={(e) => update("defaultGst", Number(e.target.value))}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>Currency</Label>
-                  <Select defaultValue="inr">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="inr">INR (&#8377;)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Authorised Signatory Name</Label>
+                  <Input
+                    value={settings.signatoryName}
+                    onChange={(e) => update("signatoryName", e.target.value)}
+                    placeholder="Name printed on invoice"
+                  />
                 </div>
               </div>
-              <Button onClick={() => toast.success("Store settings saved")}>Save Changes</Button>
+              <Button onClick={handleSave}>Save Changes</Button>
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* ── Bank Details ──────────────────────────────────── */}
+        <TabsContent value="bank">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Bank Details</CardTitle>
+              <CardDescription>
+                Bank information printed on invoices for RTGS/NEFT payments
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Bank Name</Label>
+                  <Input
+                    value={settings.bankName}
+                    onChange={(e) => update("bankName", e.target.value)}
+                    placeholder="e.g. AXIS BANK"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Branch</Label>
+                  <Input
+                    value={settings.bankBranch}
+                    onChange={(e) => update("bankBranch", e.target.value)}
+                    placeholder="e.g. Sahid Nagar, Kolkata Branch"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Account Number</Label>
+                  <Input
+                    value={settings.accountNo}
+                    onChange={(e) => update("accountNo", e.target.value)}
+                    placeholder="e.g. 920020000488322"
+                    className="font-mono"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>IFSC Code</Label>
+                  <Input
+                    value={settings.ifscCode}
+                    onChange={(e) => update("ifscCode", e.target.value)}
+                    placeholder="e.g. UTIB0001234"
+                    className="font-mono"
+                  />
+                </div>
+              </div>
+              <Button onClick={handleSave}>Save Changes</Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Printer ──────────────────────────────────────── */}
         <TabsContent value="printer">
           <Card>
             <CardHeader>
@@ -118,7 +288,7 @@ export default function SettingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Printer Type</Label>
-                  <Select defaultValue="thermal">
+                  <Select defaultValue="browser">
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -131,7 +301,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Paper Size</Label>
-                  <Select defaultValue="80mm">
+                  <Select defaultValue="a4">
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -143,11 +313,14 @@ export default function SettingsPage() {
                   </Select>
                 </div>
               </div>
-              <Button onClick={() => toast.success("Printer configured. Test page sent.")}>Save & Test Print</Button>
+              <Button onClick={() => toast.success("Printer configured.")}>
+                Save & Test Print
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* ── Payment ──────────────────────────────────────── */}
         <TabsContent value="payment">
           <Card>
             <CardHeader>
@@ -165,11 +338,14 @@ export default function SettingsPage() {
                 <Label>Razorpay Key Secret</Label>
                 <Input placeholder="xxxxxxxxxxxxx" type="password" />
               </div>
-              <Button onClick={() => toast.success("Payment gateway verified and saved")}>Save & Verify</Button>
+              <Button onClick={() => toast.success("Payment gateway verified and saved")}>
+                Save & Verify
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* ── Alerts ───────────────────────────────────────── */}
         <TabsContent value="notifications">
           <Card>
             <CardHeader>
@@ -187,7 +363,9 @@ export default function SettingsPage() {
                 <Label>Alert Email</Label>
                 <Input defaultValue="admin@thebikergenome.com" />
               </div>
-              <Button onClick={() => toast.success("Alert settings saved")}>Save Settings</Button>
+              <Button onClick={() => toast.success("Alert settings saved")}>
+                Save Settings
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

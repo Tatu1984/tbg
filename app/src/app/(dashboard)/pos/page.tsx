@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,7 +55,6 @@ import {
 import {
   Plus,
   Minus,
-  Trash2,
   Printer,
   CreditCard,
   Banknote,
@@ -68,20 +67,25 @@ import {
   Receipt,
   ShoppingBag,
   X,
+  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  type StoreSettings,
+  getStoreSettings,
+} from "@/config/store-settings";
 
-// Mock product data (will come from DB)
+// ── Mock product data (will come from DB) ────────────────────────────────
 const INITIAL_PRODUCTS = [
-  { id: "1", sku: "BG-HEL-001", name: "MT Thunder 3 Helmet - Black M", price: 5500, mrp: 6200, gst: 18, stock: 7, category: "Helmets" },
-  { id: "2", sku: "BG-HEL-002", name: "LS2 FF800 Storm Helmet - Blue L", price: 8900, mrp: 9500, gst: 18, stock: 1, category: "Helmets" },
-  { id: "3", sku: "BG-JAK-001", name: "Rynox Storm Evo Jacket - L", price: 5990, mrp: 6490, gst: 18, stock: 4, category: "Riding Jackets" },
-  { id: "4", sku: "BG-GLV-001", name: "Rynox Air GT Gloves - M", price: 1490, mrp: 1690, gst: 18, stock: 2, category: "Riding Gloves" },
-  { id: "5", sku: "BG-BOT-001", name: "Cramster Blaster Boots - 10", price: 2990, mrp: 3490, gst: 18, stock: 5, category: "Riding Boots" },
-  { id: "6", sku: "BG-ACC-001", name: "Royal Enfield Saddle Bag", price: 2990, mrp: 3490, gst: 18, stock: 6, category: "Luggage & Bags" },
-  { id: "7", sku: "BG-ACC-002", name: "Phone Mount - Quad Lock", price: 3200, mrp: 3500, gst: 18, stock: 8, category: "Bike Accessories" },
-  { id: "8", sku: "BG-PRO-001", name: "Knee Guard Pro - Rynox", price: 1890, mrp: 2190, gst: 18, stock: 3, category: "Protection Gear" },
+  { id: "1", sku: "BG-HEL-001", hsn: "6506", name: "MT Thunder 3 Helmet - Black M", price: 5500, mrp: 6200, gst: 18, stock: 7, category: "Helmets" },
+  { id: "2", sku: "BG-HEL-002", hsn: "6506", name: "LS2 FF800 Storm Helmet - Blue L", price: 8900, mrp: 9500, gst: 18, stock: 1, category: "Helmets" },
+  { id: "3", sku: "BG-JAK-001", hsn: "6201", name: "Rynox Storm Evo Jacket - L", price: 5990, mrp: 6490, gst: 18, stock: 4, category: "Riding Jackets" },
+  { id: "4", sku: "BG-GLV-001", hsn: "6116", name: "Rynox Air GT Gloves - M", price: 1490, mrp: 1690, gst: 18, stock: 2, category: "Riding Gloves" },
+  { id: "5", sku: "BG-BOT-001", hsn: "6403", name: "Cramster Blaster Boots - 10", price: 2990, mrp: 3490, gst: 18, stock: 5, category: "Riding Boots" },
+  { id: "6", sku: "BG-ACC-001", hsn: "4202", name: "Royal Enfield Saddle Bag", price: 2990, mrp: 3490, gst: 18, stock: 6, category: "Luggage & Bags" },
+  { id: "7", sku: "BG-ACC-002", hsn: "8517", name: "Phone Mount - Quad Lock", price: 3200, mrp: 3500, gst: 18, stock: 8, category: "Bike Accessories" },
+  { id: "8", sku: "BG-PRO-001", hsn: "6307", name: "Knee Guard Pro - Rynox", price: 1890, mrp: 2190, gst: 18, stock: 3, category: "Protection Gear" },
 ];
 
 type Product = (typeof INITIAL_PRODUCTS)[number];
@@ -92,6 +96,28 @@ interface InvoiceItem {
   discount: number;
   overridePrice: number | null;
   overrideGst: number | null;
+}
+
+interface CustomerInfo {
+  name: string;
+  phone: string;
+  address: string;
+  gstin: string;
+  stateCode: string;
+}
+
+interface InvoiceSnapshotType {
+  invoiceNo: string;
+  items: InvoiceItem[];
+  customer: CustomerInfo;
+  subtotal: number;
+  totalGst: number;
+  globalDiscount: number;
+  grandTotal: number;
+  paymentMethod: string;
+  date: string;
+  isCash: boolean;
+  store: StoreSettings;
 }
 
 const CATEGORIES = [
@@ -105,6 +131,218 @@ const CATEGORIES = [
   "Protection Gear",
 ];
 
+// ── Number to words (Indian system) ──────────────────────────────────────
+function numberToWords(num: number): string {
+  if (num === 0) return "Zero";
+  const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  function convert(n: number): string {
+    if (n < 20) return ones[n];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "");
+    if (n < 1000) return ones[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " and " + convert(n % 100) : "");
+    if (n < 100000) return convert(Math.floor(n / 1000)) + " Thousand" + (n % 1000 ? " " + convert(n % 1000) : "");
+    if (n < 10000000) return convert(Math.floor(n / 100000)) + " Lakh" + (n % 100000 ? " " + convert(n % 100000) : "");
+    return convert(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + convert(n % 10000000) : "");
+  }
+
+  const whole = Math.floor(Math.abs(num));
+  const paise = Math.round((Math.abs(num) - whole) * 100);
+  let result = "Rupees " + convert(whole);
+  if (paise > 0) result += " and " + convert(paise) + " Paise";
+  return result + " Only";
+}
+
+// ── Generate A4 Tax Invoice HTML ─────────────────────────────────────────
+function generateInvoiceHTML(snap: InvoiceSnapshotType): string {
+  const s = snap.store;
+  const c = snap.customer;
+
+  const itemRows = snap.items.map((it, i) => {
+    const unitPrice = it.overridePrice ?? it.product.price;
+    const gstRate = it.overrideGst ?? it.product.gst;
+    const taxableValue = unitPrice * it.quantity - it.discount;
+    const halfRate = gstRate / 2;
+    const sgst = snap.isCash ? 0 : taxableValue * halfRate / 100;
+    const cgst = snap.isCash ? 0 : taxableValue * halfRate / 100;
+    const total = taxableValue + sgst + cgst;
+
+    return `<tr>
+      <td style="text-align:center;padding:6px 4px;border:1px solid #000">${i + 1}</td>
+      <td style="padding:6px 8px;border:1px solid #000;font-weight:bold">${it.product.name}</td>
+      <td style="text-align:center;padding:6px 4px;border:1px solid #000">${it.product.hsn || ""}</td>
+      <td style="text-align:center;padding:6px 4px;border:1px solid #000">${it.quantity}</td>
+      <td style="text-align:right;padding:6px 8px;border:1px solid #000">${unitPrice.toFixed(2)}</td>
+      <td style="text-align:right;padding:6px 8px;border:1px solid #000">${taxableValue.toFixed(2)}</td>
+      <td style="text-align:center;padding:6px 4px;border:1px solid #000">${snap.isCash ? "-" : halfRate.toFixed(1) + "%"}</td>
+      <td style="text-align:right;padding:6px 6px;border:1px solid #000">${snap.isCash ? "-" : sgst.toFixed(2)}</td>
+      <td style="text-align:center;padding:6px 4px;border:1px solid #000">${snap.isCash ? "-" : halfRate.toFixed(1) + "%"}</td>
+      <td style="text-align:right;padding:6px 6px;border:1px solid #000">${snap.isCash ? "-" : cgst.toFixed(2)}</td>
+      <td style="text-align:center;padding:6px 4px;border:1px solid #000">-</td>
+      <td style="text-align:right;padding:6px 6px;border:1px solid #000">-</td>
+      <td style="text-align:right;padding:6px 8px;border:1px solid #000;font-weight:bold">${total.toFixed(2)}</td>
+    </tr>`;
+  }).join("");
+
+  // Add empty rows to fill the table (min ~12 rows for A4 look)
+  const emptyRowCount = Math.max(0, 10 - snap.items.length);
+  const emptyRows = Array(emptyRowCount).fill(`<tr>
+    <td style="padding:14px 4px;border:1px solid #000">&nbsp;</td>
+    <td style="border:1px solid #000"></td><td style="border:1px solid #000"></td>
+    <td style="border:1px solid #000"></td><td style="border:1px solid #000"></td>
+    <td style="border:1px solid #000"></td><td style="border:1px solid #000"></td>
+    <td style="border:1px solid #000"></td><td style="border:1px solid #000"></td>
+    <td style="border:1px solid #000"></td><td style="border:1px solid #000"></td>
+    <td style="border:1px solid #000"></td><td style="border:1px solid #000"></td>
+  </tr>`).join("");
+
+  const netAmount = Math.round(snap.grandTotal);
+  const amountInWords = numberToWords(netAmount);
+
+  return `<!DOCTYPE html>
+<html><head>
+<title>Tax Invoice ${snap.invoiceNo}</title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; }
+  table { border-collapse: collapse; width: 100%; }
+  .invoice-box { border: 2px solid #000; padding: 0; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head><body>
+<div class="invoice-box">
+  <!-- Header -->
+  <table>
+    <tr>
+      <td style="width:65%;padding:10px 15px;border-bottom:2px solid #000;border-right:2px solid #000;vertical-align:top">
+        <div style="text-align:center">
+          <div style="font-size:9px;font-weight:bold;letter-spacing:1px;margin-bottom:2px">TAX INVOICE</div>
+          <div style="font-size:22px;font-weight:900;font-family:Impact,Arial,sans-serif;letter-spacing:2px">${s.storeName}</div>
+          <div style="font-size:11px;margin-top:2px">${s.address}, ${s.city} - ${s.pincode}</div>
+          <div style="font-size:10px">Phone : ${s.phones}</div>
+          <div style="font-size:10px">E-mail : ${s.email}</div>
+        </div>
+      </td>
+      <td style="width:35%;padding:10px 15px;border-bottom:2px solid #000;vertical-align:top">
+        <div style="font-size:11px;margin-bottom:8px"><strong>GSTIN : ${s.gstin}</strong></div>
+        <table style="width:100%">
+          <tr><td style="padding:3px 0;font-size:11px">INVOICE NO :</td><td style="text-align:right;font-weight:bold;font-size:13px">${snap.invoiceNo}</td></tr>
+          <tr><td style="padding:3px 0;font-size:11px">INVOICE DATE :</td><td style="text-align:right;font-weight:bold;font-size:11px">${snap.date}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Customer Info -->
+  <table>
+    <tr>
+      <td style="padding:8px 15px;border-bottom:1px solid #000">
+        <table style="width:100%">
+          <tr><td style="width:70px;padding:2px 0"><strong>NAME:</strong></td><td style="border-bottom:1px solid #999;padding:2px 4px;font-weight:bold">${c.name || ""}</td><td style="width:40%"></td></tr>
+          <tr><td style="padding:2px 0"><strong>ADDRESS</strong></td><td colspan="2" style="border-bottom:1px solid #999;padding:2px 4px">${c.address || ""}</td></tr>
+          <tr>
+            <td style="padding:2px 0"><strong>GSTIN NO.</strong></td>
+            <td style="border-bottom:1px solid #999;padding:2px 4px">${c.gstin || ""}</td>
+            <td>
+              <span style="margin-left:20px"><strong>STATE CODE:</strong> ${c.stateCode || "____"}</span>
+              <span style="margin-left:30px"><strong>MOBILE NO:</strong> ${c.phone || ""}</span>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Items Table -->
+  <table style="font-size:10px">
+    <thead>
+      <tr style="background:#f0f0f0">
+        <th rowspan="2" style="border:1px solid #000;padding:4px;width:30px">NO</th>
+        <th rowspan="2" style="border:1px solid #000;padding:4px;text-align:left">DESCRIPTION OF GOODS</th>
+        <th rowspan="2" style="border:1px solid #000;padding:4px;width:50px">HSN<br/>CODE</th>
+        <th rowspan="2" style="border:1px solid #000;padding:4px;width:35px">QTN</th>
+        <th rowspan="2" style="border:1px solid #000;padding:4px;width:70px">RATE</th>
+        <th rowspan="2" style="border:1px solid #000;padding:4px;width:80px">TAXABLE<br/>VALUE</th>
+        <th colspan="6" style="border:1px solid #000;padding:4px;text-align:center">GST TAX</th>
+        <th rowspan="2" style="border:1px solid #000;padding:4px;width:80px;text-align:right">TOTAL</th>
+      </tr>
+      <tr style="background:#f0f0f0">
+        <th style="border:1px solid #000;padding:3px;width:35px">%</th>
+        <th style="border:1px solid #000;padding:3px;width:55px">SGST</th>
+        <th style="border:1px solid #000;padding:3px;width:35px">%</th>
+        <th style="border:1px solid #000;padding:3px;width:55px">CGST</th>
+        <th style="border:1px solid #000;padding:3px;width:30px">%</th>
+        <th style="border:1px solid #000;padding:3px;width:50px">IGST</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemRows}
+      ${emptyRows}
+    </tbody>
+  </table>
+
+  <!-- Totals -->
+  <table>
+    <tr>
+      <td style="border:1px solid #000;padding:0" colspan="100%">
+        <table style="width:100%">
+          <tr>
+            <td style="width:65%;padding:4px 15px;border-right:1px solid #000"></td>
+            <td style="padding:6px 15px;text-align:right;font-size:12px">
+              <strong>Total Bill Amount :</strong>
+            </td>
+            <td style="padding:6px 15px;text-align:right;font-size:13px;font-weight:bold;width:120px">
+              &#8377; ${snap.grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Amount in words + Net Amount -->
+  <table>
+    <tr>
+      <td style="width:65%;padding:6px 15px;border:1px solid #000;border-right:2px solid #000;font-size:11px">
+        <strong>Amount Chargeable (In Words):</strong><br/>
+        <em>${amountInWords}</em>
+      </td>
+      <td style="padding:6px 15px;border:1px solid #000;text-align:right">
+        ${snap.globalDiscount > 0 ? `<div style="font-size:10px;margin-bottom:4px">Discount: -&#8377; ${snap.globalDiscount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>` : ""}
+        <div style="font-size:13px;font-weight:bold">Net Amount : &nbsp; &#8377; ${netAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Footer: Payment + Bank + Signatures -->
+  <table>
+    <tr>
+      <td style="width:35%;padding:8px 15px;border:1px solid #000;vertical-align:top;font-size:11px">
+        <strong>Payment Received By:</strong>&nbsp;&nbsp;${snap.paymentMethod.toUpperCase()}
+        <div style="height:40px"></div>
+        <div style="border-top:1px solid #999;padding-top:4px;font-size:10px">Receiver's Signature</div>
+      </td>
+      <td style="width:30%;padding:8px 15px;border:1px solid #000;vertical-align:top;text-align:center;font-size:10px">
+        <strong style="text-decoration:underline">RTGS/NEFT TO BE SENT TO</strong><br/><br/>
+        Bank Name: ${s.bankName} (${s.bankBranch})<br/>
+        Account No.: ${s.accountNo}
+        ${s.ifscCode ? "<br/>IFSC: " + s.ifscCode : ""}
+      </td>
+      <td style="width:35%;padding:8px 15px;border:1px solid #000;vertical-align:top;text-align:right;font-size:11px">
+        <div>For: <strong>${s.storeName}</strong></div>
+        <div style="height:40px"></div>
+        <div style="border-top:1px solid #999;display:inline-block;padding-top:4px;font-size:10px">Authorised Signatory</div>
+      </td>
+    </tr>
+  </table>
+</div>
+</body></html>`;
+}
+
+// ── Component ────────────────────────────────────────────────────────────
+
 export default function POSPage() {
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
   const [items, setItems] = useState<InvoiceItem[]>([]);
@@ -116,55 +354,61 @@ export default function POSPage() {
   const [cashCounter, setCashCounter] = useState(1);
   const [regularCounter, setRegularCounter] = useState(1);
 
+  // Customer info
+  const [customer, setCustomer] = useState<CustomerInfo>({
+    name: "",
+    phone: "",
+    address: "",
+    gstin: "",
+    stateCode: "",
+  });
+
+  // Store settings from localStorage
+  const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
+  useEffect(() => {
+    setStoreSettings(getStoreSettings());
+  }, []);
+
   // Invoice preview
   const [invoicePreviewOpen, setInvoicePreviewOpen] = useState(false);
-  const [invoiceSnapshot, setInvoiceSnapshot] = useState<{
-    invoiceNo: string;
-    items: InvoiceItem[];
-    subtotal: number;
-    totalGst: number;
-    globalDiscount: number;
-    grandTotal: number;
-    paymentMethod: string;
-    date: string;
-    isCash: boolean;
-  } | null>(null);
-  const printRef = useRef<HTMLDivElement>(null);
+  const [invoiceSnapshot, setInvoiceSnapshot] = useState<InvoiceSnapshotType | null>(null);
 
-  const handlePrint = useCallback(() => {
-    if (!printRef.current) return;
-    const printWindow = window.open("", "_blank", "width=400,height=700");
+  function handlePrint() {
+    if (!invoiceSnapshot) return;
+    const html = generateInvoiceHTML(invoiceSnapshot);
+    const printWindow = window.open("", "_blank", "width=900,height=700");
     if (!printWindow) return;
-    printWindow.document.write(`
-      <html><head><title>Invoice #${invoiceSnapshot?.invoiceNo}</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Courier New', monospace; font-size: 12px; padding: 10px; max-width: 300px; margin: 0 auto; }
-        .center { text-align: center; }
-        .right { text-align: right; }
-        .bold { font-weight: bold; }
-        .line { border-top: 1px dashed #000; margin: 6px 0; }
-        .row { display: flex; justify-content: space-between; padding: 2px 0; }
-        .item-name { font-weight: bold; }
-        .item-detail { padding-left: 10px; color: #555; }
-        h2 { font-size: 16px; margin: 4px 0; }
-        h3 { font-size: 13px; margin: 2px 0; }
-        .footer { margin-top: 12px; font-size: 10px; color: #777; }
-        @media print { body { padding: 0; } }
-      </style></head><body>
-      ${printRef.current.innerHTML}
-      </body></html>
-    `);
+    printWindow.document.write(html);
     printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
-  }, [invoiceSnapshot?.invoiceNo]);
+    // Let user see preview, then print via Ctrl+P or browser print
+  }
+
+  function handleDirectPrint() {
+    if (!invoiceSnapshot) return;
+    const html = generateInvoiceHTML(invoiceSnapshot);
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument || iframe.contentWindow?.document;
+    if (!doc) return;
+    doc.open();
+    doc.write(html);
+    doc.close();
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => document.body.removeChild(iframe), 1000);
+  }
 
   // New product form
   const [newProduct, setNewProduct] = useState({
     name: "",
     sku: "",
+    hsn: "",
     category: "",
     price: "",
     mrp: "",
@@ -273,6 +517,7 @@ export default function POSPage() {
     const product: Product = {
       id: `new-${Date.now()}`,
       sku: newProduct.sku || `BG-NEW-${Date.now().toString(36).toUpperCase()}`,
+      hsn: newProduct.hsn || "",
       name: newProduct.name,
       price: Number(newProduct.price),
       mrp: Number(newProduct.mrp) || Number(newProduct.price),
@@ -286,6 +531,7 @@ export default function POSPage() {
     setNewProduct({
       name: "",
       sku: "",
+      hsn: "",
       category: "",
       price: "",
       mrp: "",
@@ -300,11 +546,11 @@ export default function POSPage() {
       toast.error("Add items to the invoice first");
       return;
     }
+    if (!storeSettings) return;
 
-    // Generate invoice number based on payment type
-    const currentInvoiceNo = isCash
-      ? `CS-${String(invoiceCounter)}-${String(cashCounter).padStart(3, "0")}`
-      : `TBG-${String(invoiceCounter)}-${String(regularCounter).padStart(3, "0")}`;
+    const prefix = isCash ? storeSettings.cashInvoicePrefix : storeSettings.invoicePrefix;
+    const counter = isCash ? cashCounter : regularCounter;
+    const currentInvoiceNo = `${prefix}-${String(invoiceCounter)}-${String(counter).padStart(3, "0")}`;
 
     if (isCash) {
       setCashCounter((c) => c + 1);
@@ -312,20 +558,18 @@ export default function POSPage() {
       setRegularCounter((c) => c + 1);
     }
 
-    // Snapshot the invoice data before clearing
     setInvoiceSnapshot({
       invoiceNo: currentInvoiceNo,
       items: [...items],
+      customer: { ...customer },
       subtotal,
       totalGst,
       globalDiscount,
       grandTotal,
       paymentMethod,
       isCash,
-      date: new Date().toLocaleString("en-IN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }),
+      store: storeSettings,
+      date: new Date().toLocaleDateString("en-IN"),
     });
     setInvoicePreviewOpen(true);
 
@@ -349,6 +593,7 @@ export default function POSPage() {
     );
     setItems([]);
     setGlobalDiscount(0);
+    setCustomer({ name: "", phone: "", address: "", gstin: "", stateCode: "" });
   }
 
   return (
@@ -357,7 +602,6 @@ export default function POSPage() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Product search bar */}
         <div className="flex items-center gap-3 mb-4">
-          {/* Option 1: Dropdown search from existing stock */}
           <Popover open={searchOpen} onOpenChange={setSearchOpen}>
             <PopoverTrigger asChild>
               <Button
@@ -440,7 +684,6 @@ export default function POSPage() {
             </PopoverContent>
           </Popover>
 
-          {/* Option 2: Add new product button (popup) */}
           <Dialog open={newProductOpen} onOpenChange={setNewProductOpen}>
             <DialogTrigger asChild>
               <Button
@@ -482,6 +725,17 @@ export default function POSPage() {
                       value={newProduct.sku}
                       onChange={(e) =>
                         setNewProduct({ ...newProduct, sku: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="np-hsn">HSN Code</Label>
+                    <Input
+                      id="np-hsn"
+                      placeholder="e.g., 6506"
+                      value={newProduct.hsn}
+                      onChange={(e) =>
+                        setNewProduct({ ...newProduct, hsn: e.target.value })
                       }
                     />
                   </div>
@@ -646,8 +900,9 @@ export default function POSPage() {
                                   {it.product.name}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {it.product.sku} &middot; Stock:{" "}
-                                  {it.product.stock}
+                                  {it.product.sku}
+                                  {it.product.hsn && <> &middot; HSN: {it.product.hsn}</>}
+                                  {" "}&middot; Stock: {it.product.stock}
                                 </p>
                               </div>
                             </TableCell>
@@ -708,7 +963,7 @@ export default function POSPage() {
                             </TableCell>
                             <TableCell className="text-right">
                               {isCash ? (
-                                <span className="text-xs text-muted-foreground">—</span>
+                                <span className="text-xs text-muted-foreground">&mdash;</span>
                               ) : (
                                 <div className="flex items-center justify-end gap-0.5">
                                   <Input
@@ -769,7 +1024,7 @@ export default function POSPage() {
               <div>
                 <p className="font-semibold text-sm">The Biker Genome</p>
                 <p className="text-xs text-muted-foreground">
-                  {isCash ? "Cash Sale" : "Regular Invoice"}
+                  {isCash ? "Cash Sale" : "Tax Invoice"}
                 </p>
               </div>
               {isCash && (
@@ -777,6 +1032,49 @@ export default function POSPage() {
                   No GST &middot; No Trail
                 </Badge>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Customer Info */}
+        <Card>
+          <CardHeader className="pb-2 pt-4">
+            <CardTitle className="text-xs text-muted-foreground uppercase tracking-wider">Customer</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 pb-4">
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                placeholder="Name"
+                className="h-8 text-xs"
+                value={customer.name}
+                onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+              />
+              <Input
+                placeholder="Mobile"
+                className="h-8 text-xs"
+                value={customer.phone}
+                onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+              />
+            </div>
+            <Input
+              placeholder="Address"
+              className="h-8 text-xs"
+              value={customer.address}
+              onChange={(e) => setCustomer({ ...customer, address: e.target.value })}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                placeholder="GSTIN (optional)"
+                className="h-8 text-xs font-mono"
+                value={customer.gstin}
+                onChange={(e) => setCustomer({ ...customer, gstin: e.target.value })}
+              />
+              <Input
+                placeholder="State Code"
+                className="h-8 text-xs"
+                value={customer.stateCode}
+                onChange={(e) => setCustomer({ ...customer, stateCode: e.target.value })}
+              />
             </div>
           </CardContent>
         </Card>
@@ -797,7 +1095,7 @@ export default function POSPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">GST</span>
                 <span>
-                  {isCash ? "—" : `₹${totalGst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+                  {isCash ? "\u2014" : `\u20B9${totalGst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
                 </span>
               </div>
               <div className="flex justify-between text-sm items-center">
@@ -880,108 +1178,39 @@ export default function POSPage() {
 
       {/* Invoice Preview Dialog */}
       <Dialog open={invoicePreviewOpen} onOpenChange={setInvoicePreviewOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
-              Invoice Preview
+              Invoice Preview &mdash; {invoiceSnapshot?.invoiceNo}
             </DialogTitle>
             <DialogDescription>
-              Review the invoice below before printing.
+              Review the tax invoice below. Use Preview to see the print layout, or Print to send directly to printer.
             </DialogDescription>
           </DialogHeader>
 
           {invoiceSnapshot && (
             <>
-              {/* Printable receipt content */}
-              <div ref={printRef}>
-                <div className="border rounded-lg p-5 bg-white text-black text-sm space-y-3">
-                  {/* Header */}
-                  <div className="text-center space-y-0.5">
-                    <h2 className="text-base font-bold">THE BIKER GENOME</h2>
-                    <p className="text-[11px] text-gray-500">Premium Riding Gear</p>
-                    <div className="border-t border-dashed border-gray-300 my-2" />
-                    <div className="flex justify-between text-[11px] text-gray-600">
-                      <span>Invoice #{invoiceSnapshot.invoiceNo}</span>
-                      <span>{invoiceSnapshot.date}</span>
-                    </div>
-                    <div className="text-[11px] text-gray-600 text-left">
-                      Payment: {invoiceSnapshot.paymentMethod.toUpperCase()}
-                    </div>
-                  </div>
-
-                  <div className="border-t border-dashed border-gray-300" />
-
-                  {/* Items */}
-                  <div className="space-y-2">
-                    {invoiceSnapshot.items.map((it) => {
-                      const unitPrice = it.overridePrice ?? it.product.price;
-                      const gstRate = it.overrideGst ?? it.product.gst;
-                      const lineSubtotal = unitPrice * it.quantity - it.discount;
-                      const lineGst = invoiceSnapshot.isCash ? 0 : (lineSubtotal * gstRate) / 100;
-                      const lineTotal = lineSubtotal + lineGst;
-                      return (
-                        <div key={it.product.id}>
-                          <div className="flex justify-between">
-                            <span className="font-medium text-xs truncate max-w-[200px]">
-                              {it.product.name}
-                            </span>
-                            <span className="font-semibold text-xs whitespace-nowrap ml-2">
-                              &#8377;{lineTotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-gray-500 flex gap-3">
-                            <span>{it.quantity} x &#8377;{unitPrice.toLocaleString("en-IN")}</span>
-                            {!invoiceSnapshot.isCash && <span>GST {gstRate}%</span>}
-                            {it.discount > 0 && <span>Disc -&#8377;{it.discount}</span>}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="border-t border-dashed border-gray-300" />
-
-                  {/* Totals */}
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Subtotal</span>
-                      <span>&#8377;{invoiceSnapshot.subtotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
-                    </div>
-                    {!invoiceSnapshot.isCash && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">GST</span>
-                        <span>&#8377;{invoiceSnapshot.totalGst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
-                      </div>
-                    )}
-                    {invoiceSnapshot.globalDiscount > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Discount</span>
-                        <span>-&#8377;{invoiceSnapshot.globalDiscount.toLocaleString("en-IN")}</span>
-                      </div>
-                    )}
-                    <div className="border-t border-dashed border-gray-300 pt-1" />
-                    <div className="flex justify-between text-sm font-bold">
-                      <span>TOTAL</span>
-                      <span>&#8377;{invoiceSnapshot.grandTotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-dashed border-gray-300" />
-
-                  {/* Footer */}
-                  <div className="text-center space-y-0.5">
-                    <p className="text-[10px] text-gray-400">Thank you for shopping with us!</p>
-                    <p className="text-[10px] text-gray-400">www.thebikergenome.com</p>
-                  </div>
-                </div>
-              </div>
+              {/* Inline preview rendered via the same HTML */}
+              <div
+                className="border rounded-lg bg-white overflow-auto"
+                style={{ maxHeight: "60vh" }}
+                dangerouslySetInnerHTML={{
+                  __html: generateInvoiceHTML(invoiceSnapshot)
+                    .replace(/<!DOCTYPE html>[\s\S]*?<body>/, "")
+                    .replace(/<\/body>[\s\S]*?<\/html>/, ""),
+                }}
+              />
 
               <DialogFooter className="gap-2">
                 <DialogClose asChild>
                   <Button variant="outline">Close</Button>
                 </DialogClose>
-                <Button className="gap-2" onClick={handlePrint}>
+                <Button variant="outline" className="gap-2" onClick={handlePrint}>
+                  <Eye className="h-4 w-4" />
+                  Preview in New Tab
+                </Button>
+                <Button className="gap-2" onClick={handleDirectPrint}>
                   <Printer className="h-4 w-4" />
                   Print Invoice
                 </Button>
