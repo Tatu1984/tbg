@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,16 @@ const itemVariant = {
 const PLACEHOLDER_IMG = "https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&h=400&fit=crop";
 
 export default function ShopPage() {
+  return (
+    <Suspense fallback={null}>
+      <ShopContent />
+    </Suspense>
+  );
+}
+
+function ShopContent() {
+  const searchParams = useSearchParams();
+  const category = searchParams.get("category") || "";
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState("newest");
@@ -69,11 +80,14 @@ export default function ShopPage() {
 
   useEffect(() => {
     fetchProducts();
-  }, [sortBy]);
+  }, [sortBy, category]);
 
   async function fetchProducts() {
+    setLoading(true);
     try {
-      const res = await fetch(`/api/shop/products?sort=${sortBy}`);
+      const params = new URLSearchParams({ sort: sortBy });
+      if (category) params.set("category", category);
+      const res = await fetch(`/api/shop/products?${params}`);
       const data = await res.json();
       setProducts(data.products || []);
     } catch {

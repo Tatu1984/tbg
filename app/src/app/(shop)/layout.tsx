@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,6 +35,33 @@ const categories = [
   "Luggage & Bags",
   "Protection Gear",
 ];
+
+function CategoryNav() {
+  const searchParams = useSearchParams();
+  const activeCategory = searchParams.get("category") || "All";
+
+  return (
+    <nav className="flex items-center gap-1 -mb-px overflow-x-auto pb-0">
+      {categories.map((cat) => {
+        const isActive = cat === activeCategory;
+        return (
+          <Link
+            key={cat}
+            href={cat === "All" ? "/shop" : `/shop?category=${encodeURIComponent(cat)}`}
+            className={cn(
+              "px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+              isActive
+                ? "border-brand text-brand"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+            )}
+          >
+            {cat}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
 
 export default function ShopLayout({
   children,
@@ -176,27 +203,9 @@ export default function ShopLayout({
           </div>
 
           {/* Category nav */}
-          <nav className="flex items-center gap-1 -mb-px overflow-x-auto pb-0">
-            {categories.map((cat) => {
-              const isActive =
-                (cat === "All" && pathname === "/shop") ||
-                pathname.includes(cat.toLowerCase());
-              return (
-                <Link
-                  key={cat}
-                  href={cat === "All" ? "/shop" : `/shop?category=${encodeURIComponent(cat)}`}
-                  className={cn(
-                    "px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
-                    isActive
-                      ? "border-brand text-brand"
-                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                  )}
-                >
-                  {cat}
-                </Link>
-              );
-            })}
-          </nav>
+          <Suspense fallback={null}>
+            <CategoryNav />
+          </Suspense>
         </div>
       </header>
 
