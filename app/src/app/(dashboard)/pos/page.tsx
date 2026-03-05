@@ -242,16 +242,22 @@ function generateInvoiceHTML(snap: InvoiceSnapshotType): string {
   <table>
     <tr>
       <td style="padding:8px 15px;border-bottom:1px solid #000">
-        <table style="width:100%">
-          <tr><td style="width:70px;padding:2px 0"><strong>NAME:</strong></td><td style="border-bottom:1px solid #999;padding:2px 4px;font-weight:bold">${c.name || ""}</td><td style="width:40%"></td></tr>
-          <tr><td style="padding:2px 0"><strong>ADDRESS</strong></td><td colspan="2" style="border-bottom:1px solid #999;padding:2px 4px">${c.address || ""}</td></tr>
+        <table style="width:100%;border-collapse:collapse">
           <tr>
-            <td style="padding:2px 0"><strong>GSTIN NO.</strong></td>
-            <td style="border-bottom:1px solid #999;padding:2px 4px">${c.gstin || ""}</td>
-            <td>
-              <span style="margin-left:20px"><strong>STATE CODE:</strong> ${c.stateCode || "____"}</span>
-              <span style="margin-left:30px"><strong>MOBILE NO:</strong> ${c.phone || ""}</span>
-            </td>
+            <td style="width:80px;padding:3px 0;white-space:nowrap"><strong>NAME:</strong></td>
+            <td colspan="5" style="border-bottom:1px solid #999;padding:3px 4px;font-weight:bold">${c.name || ""}</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 0;white-space:nowrap"><strong>ADDRESS</strong></td>
+            <td colspan="5" style="border-bottom:1px solid #999;padding:3px 4px">${c.address || ""}</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 0;white-space:nowrap"><strong>GSTIN NO.</strong></td>
+            <td style="border-bottom:1px solid #999;padding:3px 4px;width:30%">${c.gstin || ""}</td>
+            <td style="padding:3px 0 3px 20px;white-space:nowrap"><strong>STATE CODE:</strong></td>
+            <td style="border-bottom:1px solid #999;padding:3px 4px;width:10%">${c.stateCode || ""}</td>
+            <td style="padding:3px 0 3px 20px;white-space:nowrap"><strong>MOBILE NO:</strong></td>
+            <td style="border-bottom:1px solid #999;padding:3px 4px;width:20%">${c.phone || ""}</td>
           </tr>
         </table>
       </td>
