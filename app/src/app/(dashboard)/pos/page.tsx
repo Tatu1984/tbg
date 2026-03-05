@@ -91,6 +91,7 @@ interface InvoiceItem {
   quantity: number;
   discount: number;
   overridePrice: number | null;
+  overrideGst: number | null;
 }
 
 const CATEGORIES = [
@@ -192,7 +193,7 @@ export default function POSPage() {
         )
       );
     } else {
-      setItems([...items, { product, quantity: 1, discount: 0, overridePrice: null }]);
+      setItems([...items, { product, quantity: 1, discount: 0, overridePrice: null, overrideGst: null }]);
     }
     toast.success(`Added ${product.name}`);
   }
@@ -226,6 +227,14 @@ export default function POSPage() {
     );
   }
 
+  function updateItemGst(productId: string, gst: number | null) {
+    setItems(
+      items.map((it) =>
+        it.product.id === productId ? { ...it, overrideGst: gst } : it
+      )
+    );
+  }
+
   function updateItemDiscount(productId: string, discount: number) {
     setItems(
       items.map((it) =>
@@ -241,6 +250,10 @@ export default function POSPage() {
     return it.overridePrice ?? it.product.price;
   }
 
+  function getGstRate(it: InvoiceItem) {
+    return it.overrideGst ?? it.product.gst;
+  }
+
   const subtotal = items.reduce(
     (sum, it) => sum + getUnitPrice(it) * it.quantity - it.discount,
     0
@@ -250,7 +263,7 @@ export default function POSPage() {
     : items.reduce(
         (sum, it) =>
           sum +
-          ((getUnitPrice(it) * it.quantity - it.discount) * it.product.gst) / 100,
+          ((getUnitPrice(it) * it.quantity - it.discount) * getGstRate(it)) / 100,
         0
       );
   const grandTotal = subtotal + totalGst - globalDiscount;
@@ -611,11 +624,12 @@ export default function POSPage() {
                     <AnimatePresence mode="popLayout">
                       {items.map((it) => {
                         const unitPrice = getUnitPrice(it);
+                        const gstRate = getGstRate(it);
                         const lineSubtotal =
                           unitPrice * it.quantity - it.discount;
                         const lineGst = isCash
                           ? 0
-                          : (lineSubtotal * it.product.gst) / 100;
+                          : (lineSubtotal * gstRate) / 100;
                         const lineTotal = lineSubtotal + lineGst;
 
                         return (
@@ -692,8 +706,26 @@ export default function POSPage() {
                                 }
                               />
                             </TableCell>
-                            <TableCell className="text-right text-xs text-muted-foreground">
-                              {isCash ? "—" : `${it.product.gst}%`}
+                            <TableCell className="text-right">
+                              {isCash ? (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              ) : (
+                                <div className="flex items-center justify-end gap-0.5">
+                                  <Input
+                                    type="number"
+                                    className="w-14 h-7 text-xs text-right"
+                                    value={it.overrideGst ?? it.product.gst}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value);
+                                      updateItemGst(
+                                        it.product.id,
+                                        val === it.product.gst ? null : val
+                                      );
+                                    }}
+                                  />
+                                  <span className="text-[10px] text-muted-foreground">%</span>
+                                </div>
+                              )}
                             </TableCell>
                             <TableCell className="text-right text-sm font-semibold">
                               &#8377;
@@ -884,8 +916,9 @@ export default function POSPage() {
                   <div className="space-y-2">
                     {invoiceSnapshot.items.map((it) => {
                       const unitPrice = it.overridePrice ?? it.product.price;
+                      const gstRate = it.overrideGst ?? it.product.gst;
                       const lineSubtotal = unitPrice * it.quantity - it.discount;
-                      const lineGst = invoiceSnapshot.isCash ? 0 : (lineSubtotal * it.product.gst) / 100;
+                      const lineGst = invoiceSnapshot.isCash ? 0 : (lineSubtotal * gstRate) / 100;
                       const lineTotal = lineSubtotal + lineGst;
                       return (
                         <div key={it.product.id}>
@@ -899,7 +932,7 @@ export default function POSPage() {
                           </div>
                           <div className="text-[10px] text-gray-500 flex gap-3">
                             <span>{it.quantity} x &#8377;{unitPrice.toLocaleString("en-IN")}</span>
-                            {!invoiceSnapshot.isCash && <span>GST {it.product.gst}%</span>}
+                            {!invoiceSnapshot.isCash && <span>GST {gstRate}%</span>}
                             {it.discount > 0 && <span>Disc -&#8377;{it.discount}</span>}
                           </div>
                         </div>
