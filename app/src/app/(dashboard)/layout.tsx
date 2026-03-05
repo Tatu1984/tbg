@@ -44,17 +44,18 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/frontend/hooks/useAuth";
 import { useRouter } from "next/navigation";
+import { getAllowedPages, type NavKey } from "@/config/permissions";
 
-const navItems = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/pos", icon: Receipt, label: "POS Billing" },
-  { href: "/products", icon: Package, label: "Products" },
-  { href: "/inventory", icon: Warehouse, label: "Inventory" },
-  { href: "/suppliers", icon: Truck, label: "Suppliers" },
-  { href: "/orders", icon: ShoppingCart, label: "Orders" },
-  { href: "/reports", icon: BarChart3, label: "Reports" },
-  { href: "/users", icon: Users, label: "Users" },
-  { href: "/settings", icon: Settings, label: "Settings" },
+const navItems: { key: NavKey; href: string; icon: typeof LayoutDashboard; label: string }[] = [
+  { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { key: "pos", href: "/pos", icon: Receipt, label: "POS Billing" },
+  { key: "products", href: "/products", icon: Package, label: "Products" },
+  { key: "inventory", href: "/inventory", icon: Warehouse, label: "Inventory" },
+  { key: "suppliers", href: "/suppliers", icon: Truck, label: "Suppliers" },
+  { key: "orders", href: "/orders", icon: ShoppingCart, label: "Orders" },
+  { key: "reports", href: "/reports", icon: BarChart3, label: "Reports" },
+  { key: "users", href: "/users", icon: Users, label: "Users" },
+  { key: "settings", href: "/settings", icon: Settings, label: "Settings" },
 ];
 
 export default function DashboardLayout({
@@ -77,6 +78,18 @@ export default function DashboardLayout({
       router.push("/login");
     }
   }, [router]);
+
+  const allowedPages = user?.role ? getAllowedPages(user.role) : [];
+  const filteredNavItems = navItems.filter((item) => allowedPages.includes(item.key));
+
+  // Redirect if user navigates to a page they don't have access to
+  useEffect(() => {
+    if (!user?.role) return;
+    const currentKey = pathname.split("/")[1] as NavKey;
+    if (currentKey && !getAllowedPages(user.role).includes(currentKey)) {
+      router.push("/dashboard");
+    }
+  }, [pathname, user?.role, router]);
 
   const initials = user?.name
     ?.split(" ")
@@ -116,7 +129,7 @@ export default function DashboardLayout({
         {/* Nav */}
         <ScrollArea className="flex-1 py-3">
           <nav className="space-y-1 px-2">
-            {navItems.map((navItem) => {
+            {filteredNavItems.map((navItem) => {
               const isActive = pathname === navItem.href;
               const NavIcon = navItem.icon;
 

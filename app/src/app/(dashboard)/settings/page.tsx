@@ -21,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Store, Printer, CreditCard, Bell, FileText, Landmark, Plus, Trash2, Star } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Store, Printer, CreditCard, Bell, FileText, Landmark, Plus, Trash2, Star, Shield } from "lucide-react";
 import { toast } from "sonner";
 import {
   type StoreSettings,
@@ -29,15 +30,46 @@ import {
   getStoreSettings,
   saveStoreSettings,
 } from "@/config/store-settings";
+import {
+  type RolePermissions,
+  CONFIGURABLE_ROLES,
+  CONFIGURABLE_PAGES,
+  ROLE_LABELS,
+  NAV_LABELS,
+  getRolePermissions,
+  saveRolePermissions,
+} from "@/config/permissions";
+import { useAuth } from "@/frontend/hooks/useAuth";
 
 export default function SettingsPage() {
+  const { isOwner } = useAuth();
   const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const [permissions, setPermissions] = useState<RolePermissions | null>(null);
 
   useEffect(() => {
     setSettings(getStoreSettings());
+    setPermissions(getRolePermissions());
   }, []);
 
-  if (!settings) return null;
+  if (!settings || !permissions) return null;
+
+  function togglePermission(role: (typeof CONFIGURABLE_ROLES)[number], page: (typeof CONFIGURABLE_PAGES)[number]) {
+    setPermissions((prev) => {
+      if (!prev) return prev;
+      const current = prev[role];
+      const updated = current.includes(page)
+        ? current.filter((p) => p !== page)
+        : [...current, page];
+      return { ...prev, [role]: updated };
+    });
+  }
+
+  function handleSavePermissions() {
+    if (permissions) {
+      saveRolePermissions(permissions);
+      toast.success("Role permissions saved");
+    }
+  }
 
   function update<K extends keyof StoreSettings>(key: K, value: StoreSettings[K]) {
     setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -85,6 +117,12 @@ export default function SettingsPage() {
             <Bell className="h-4 w-4" />
             Alerts
           </TabsTrigger>
+          {isOwner && (
+            <TabsTrigger value="permissions" className="gap-2">
+              <Shield className="h-4 w-4" />
+              Permissions
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ── Store Information ──────────────────────────────── */}
@@ -470,6 +508,53 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+        {/* ── Role Permissions ─────────────────────────────── */}
+        {isOwner && (
+          <TabsContent value="permissions">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Role Access Control</CardTitle>
+                <CardDescription>
+                  Configure which pages each role can access. Owner always has full access.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 pr-4 font-medium text-muted-foreground">Page</th>
+                        {CONFIGURABLE_ROLES.map((role) => (
+                          <th key={role} className="text-center py-3 px-4 font-medium text-muted-foreground">
+                            {ROLE_LABELS[role]}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {CONFIGURABLE_PAGES.map((page) => (
+                        <tr key={page} className="border-b last:border-0">
+                          <td className="py-3 pr-4 font-medium">{NAV_LABELS[page]}</td>
+                          {CONFIGURABLE_ROLES.map((role) => (
+                            <td key={role} className="text-center py-3 px-4">
+                              <Switch
+                                checked={permissions[role].includes(page)}
+                                onCheckedChange={() => togglePermission(role, page)}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <Button onClick={handleSavePermissions} className="mt-6">
+                  Save Permissions
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
