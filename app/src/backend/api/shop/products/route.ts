@@ -12,7 +12,6 @@ export async function GET(req: NextRequest) {
 
     const where: Record<string, unknown> = {
       active: true,
-      availableOnline: true,
       stock: { gt: 0 },
     };
 
