@@ -956,39 +956,40 @@ export default function POSPage() {
                         <tr key={it.product.id} className="hover:bg-muted/30 group">
                           <td className="border border-foreground/80 p-1 text-center">{idx + 1}</td>
                           <td className="border border-foreground/80 p-1">
-                            <div className="flex items-center gap-1">
-                              <span className="font-bold truncate max-w-[180px]">{it.product.name}</span>
-                            </div>
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <Button variant="outline" size="icon" className="h-4 w-4 rounded-sm" onClick={() => updateQuantity(it.product.id, -1)}>
-                                <Minus className="h-2 w-2" />
-                              </Button>
-                              <Button variant="outline" size="icon" className="h-4 w-4 rounded-sm" onClick={() => updateQuantity(it.product.id, 1)}>
-                                <Plus className="h-2 w-2" />
-                              </Button>
-                              <Input
-                                type="number"
-                                className="w-14 h-4 text-[9px] text-right px-1 ml-1"
-                                value={it.overridePrice ?? it.product.price}
-                                onChange={(e) => {
-                                  const val = Number(e.target.value);
-                                  updateItemPrice(it.product.id, val === it.product.price ? null : val || null);
-                                }}
-                              />
-                              <Input
-                                type="number"
-                                className="w-10 h-4 text-[9px] text-right px-1"
-                                value={it.discount || ""}
-                                placeholder="0"
-                                onChange={(e) => updateItemDiscount(it.product.id, Number(e.target.value) || 0)}
-                              />
-                              <span className="text-[8px] text-muted-foreground">%</span>
-                            </div>
+                            <span className="font-bold truncate max-w-[180px] block">{it.product.name}</span>
                           </td>
                           <td className="border border-foreground/80 p-1 text-center">{it.product.hsn || ""}</td>
-                          <td className="border border-foreground/80 p-1 text-center font-semibold">{it.quantity}</td>
-                          <td className="border border-foreground/80 p-1 text-right">{unitPrice.toFixed(2)}</td>
-                          <td className="border border-foreground/80 p-1 text-right">{it.discount > 0 ? `${it.discount}%` : "-"}</td>
+                          <td className="border border-foreground/80 p-0.5 text-center">
+                            <div className="flex items-center justify-center gap-0.5">
+                              <Button variant="ghost" size="icon" className="h-4 w-4" onClick={() => updateQuantity(it.product.id, -1)}>
+                                <Minus className="h-2 w-2" />
+                              </Button>
+                              <span className="w-5 text-center font-semibold">{it.quantity}</span>
+                              <Button variant="ghost" size="icon" className="h-4 w-4" onClick={() => updateQuantity(it.product.id, 1)}>
+                                <Plus className="h-2 w-2" />
+                              </Button>
+                            </div>
+                          </td>
+                          <td className="border border-foreground/80 p-0.5">
+                            <Input
+                              type="number"
+                              className="w-full h-5 text-[10px] text-right px-1 border-0 bg-transparent"
+                              value={it.overridePrice ?? it.product.price}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                updateItemPrice(it.product.id, val === it.product.price ? null : val || null);
+                              }}
+                            />
+                          </td>
+                          <td className="border border-foreground/80 p-0.5">
+                            <Input
+                              type="number"
+                              className="w-full h-5 text-[10px] text-right px-1 border-0 bg-transparent"
+                              value={it.discount || ""}
+                              placeholder="0"
+                              onChange={(e) => updateItemDiscount(it.product.id, Number(e.target.value) || 0)}
+                            />
+                          </td>
                           <td className="border border-foreground/80 p-1 text-right">{taxableValue.toFixed(2)}</td>
                           <td className="border border-foreground/80 p-1 text-center">{isCash ? "-" : `${halfRate.toFixed(1)}%`}</td>
                           <td className="border border-foreground/80 p-1 text-right">{isCash ? "-" : sgst.toFixed(2)}</td>
