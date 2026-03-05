@@ -189,8 +189,8 @@ function generateInvoiceHTML(snap: InvoiceSnapshotType): string {
     </tr>`;
   }).join("");
 
-  // Add empty rows to fill the table (min ~12 rows for A4 look)
-  const emptyRowCount = Math.max(0, 10 - snap.items.length);
+  // Empty rows: min 8 total, always at least 1 empty, max 18 for A4 landscape
+  const emptyRowCount = Math.min(18, Math.max(8, snap.items.length + 1)) - snap.items.length;
   const emptyRows = Array(emptyRowCount).fill(`<tr>
     <td style="padding:14px 4px;border:1px solid #000">&nbsp;</td>
     <td style="border:1px solid #000"></td><td style="border:1px solid #000"></td>
@@ -208,7 +208,7 @@ function generateInvoiceHTML(snap: InvoiceSnapshotType): string {
 <html><head>
 <title>Tax Invoice ${snap.invoiceNo}</title>
 <style>
-  @page { size: A4; margin: 12mm; }
+  @page { size: A4 landscape; margin: 12mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; }
   table { border-collapse: collapse; width: 100%; }
@@ -1043,8 +1043,8 @@ export default function POSPage() {
                         </tr>
                       );
                     })}
-                    {/* Empty rows to fill invoice look */}
-                    {Array.from({ length: Math.max(0, 8 - items.length) }).map((_, i) => (
+                    {/* Empty rows: min 8 total, always at least 1 empty, max 18 for A4 landscape */}
+                    {Array.from({ length: Math.min(18, Math.max(8, items.length + 1)) - items.length }).map((_, i) => (
                       <tr
                         key={`empty-${i}`}
                         className="cursor-pointer hover:bg-muted/30"
