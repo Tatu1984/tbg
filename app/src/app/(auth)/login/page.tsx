@@ -14,22 +14,39 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Eye, EyeOff, LogIn, ArrowLeft } from "lucide-react";
+import { toast } from "sonner";
+import { authApi } from "@/frontend/api/endpoints/auth.api";
+import { useAuth } from "@/frontend/hooks/useAuth";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { setAuth } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!username.trim() || !password.trim()) {
+      toast.error("Please enter username and password.");
+      return;
+    }
+
     setLoading(true);
-    // TODO: wire to auth API
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const { data } = await authApi.login(username.trim(), password);
+      setAuth(data.user, data.token);
+      toast.success(`Welcome back, ${data.user.name}!`);
       router.push("/dashboard");
-    }, 1000);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        "Login failed. Please try again.";
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -58,27 +75,19 @@ export default function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="username">Username</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="username"
+                type="text"
+                placeholder="Enter your username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
                 autoFocus
               />
             </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Forgot password?
-                </button>
-              </div>
+              <Label htmlFor="password">Password</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -115,16 +124,6 @@ export default function LoginPage() {
               {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
-
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            Need an account?{" "}
-            <Link
-              href="/register"
-              className="text-primary font-medium hover:underline"
-            >
-              Register
-            </Link>
-          </div>
         </CardContent>
       </Card>
     </div>

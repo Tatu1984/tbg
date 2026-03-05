@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -64,8 +64,26 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { clearAuth } = useAuth();
+  const { user, isAuthenticated, clearAuth, hydrate } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    hydrate();
+  }, [hydrate]);
+
+  useEffect(() => {
+    // Redirect to login if not authenticated (after hydration attempt)
+    if (typeof window !== "undefined" && !localStorage.getItem("token")) {
+      router.push("/login");
+    }
+  }, [router]);
+
+  const initials = user?.name
+    ?.split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "??";
 
   function handleSignOut() {
     clearAuth();
@@ -213,11 +231,11 @@ export default function DashboardLayout({
                 >
                   <Avatar className="h-7 w-7">
                     <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-                      AD
+                      {initials}
                     </AvatarFallback>
                   </Avatar>
                   <span className="text-sm font-medium hidden sm:inline">
-                    Admin
+                    {user?.name || "User"}
                   </span>
                   <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                 </Button>

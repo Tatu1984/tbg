@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -28,13 +28,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -43,38 +36,26 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import {
   Plus,
   MoreHorizontal,
   Edit,
   Shield,
   UserX,
-  Eye,
-  Check,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { apiClient } from "@/frontend/api/client";
 
 type Role = "owner" | "manager" | "cashier" | "inventory_staff";
 
 interface User {
-  id: number;
+  id: string;
+  username: string;
   name: string;
-  email: string;
-  phone: string;
   role: Role;
-  status: "active" | "inactive";
-  lastLogin: string;
+  active: boolean;
+  createdAt: string;
 }
-
-const initialUsers: User[] = [
-  { id: 1, name: "Sudipto (Owner)", email: "sudipto@tbg.com", phone: "+91 98765 43210", role: "owner", status: "active", lastLogin: "5 min ago" },
-  { id: 2, name: "Rakesh Kumar", email: "rakesh@tbg.com", phone: "+91 98765 43211", role: "manager", status: "active", lastLogin: "2 hours ago" },
-  { id: 3, name: "Priya Sharma", email: "priya@tbg.com", phone: "+91 98765 43212", role: "cashier", status: "active", lastLogin: "30 min ago" },
-  { id: 4, name: "Amit Verma", email: "amit@tbg.com", phone: "+91 98765 43213", role: "cashier", status: "active", lastLogin: "1 day ago" },
-  { id: 5, name: "Deepak Singh", email: "deepak@tbg.com", phone: "+91 98765 43214", role: "inventory_staff", status: "inactive", lastLogin: "1 week ago" },
-];
 
 const roleColors: Record<Role, string> = {
   owner: "bg-brand/10 text-brand border-brand/20",
@@ -90,105 +71,43 @@ const roleLabels: Record<Role, string> = {
   inventory_staff: "Inventory Staff",
 };
 
-const permissionModules = [
-  "POS Billing",
-  "Products",
-  "Inventory",
-  "Suppliers",
-  "Reports",
-  "Users",
-  "Settings",
-  "Non-Billed Sales",
-  "Purchase Orders",
-  "Customers",
-] as const;
-
-const rolePermissions: Record<Role, Record<string, boolean>> = {
-  owner: {
-    "POS Billing": true,
-    "Products": true,
-    "Inventory": true,
-    "Suppliers": true,
-    "Reports": true,
-    "Users": true,
-    "Settings": true,
-    "Non-Billed Sales": true,
-    "Purchase Orders": true,
-    "Customers": true,
-  },
-  manager: {
-    "POS Billing": true,
-    "Products": true,
-    "Inventory": true,
-    "Suppliers": true,
-    "Reports": true,
-    "Users": false,
-    "Settings": false,
-    "Non-Billed Sales": true,
-    "Purchase Orders": true,
-    "Customers": true,
-  },
-  cashier: {
-    "POS Billing": true,
-    "Products": false,
-    "Inventory": false,
-    "Suppliers": false,
-    "Reports": false,
-    "Users": false,
-    "Settings": false,
-    "Non-Billed Sales": true,
-    "Purchase Orders": false,
-    "Customers": true,
-  },
-  inventory_staff: {
-    "POS Billing": false,
-    "Products": true,
-    "Inventory": true,
-    "Suppliers": true,
-    "Reports": false,
-    "Users": false,
-    "Settings": false,
-    "Non-Billed Sales": false,
-    "Purchase Orders": true,
-    "Customers": false,
-  },
-};
-
 interface UserFormData {
+  username: string;
   name: string;
-  email: string;
-  phone: string;
   password: string;
   role: Role;
 }
 
 const emptyForm: UserFormData = {
+  username: "",
   name: "",
-  email: "",
-  phone: "",
   password: "",
   role: "cashier",
 };
 
-// Deep clone helper for permissions
-function clonePermissions(perms: Record<Role, Record<string, boolean>>) {
-  const result: Record<string, Record<string, boolean>> = {};
-  for (const role of Object.keys(perms)) {
-    result[role] = { ...perms[role as Role] };
-  }
-  return result as Record<Role, Record<string, boolean>>;
-}
-
 export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
-  const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<UserFormData>(emptyForm);
-  const [customPermissions, setCustomPermissions] = useState<Record<Role, Record<string, boolean>>>(() => clonePermissions(rolePermissions));
-  const [editingPermissions, setEditingPermissions] = useState(false);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  async function fetchUsers() {
+    try {
+      const { data } = await apiClient.get("/users");
+      setUsers(data.users);
+    } catch {
+      toast.error("Failed to load users");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // --- Add User ---
   function handleOpenAdd() {
@@ -196,59 +115,60 @@ export default function UsersPage() {
     setAddOpen(true);
   }
 
-  function handleAddSubmit() {
-    if (!formData.name.trim() || !formData.email.trim() || !formData.password.trim()) {
+  async function handleAddSubmit() {
+    if (!formData.username.trim() || !formData.name.trim() || !formData.password.trim()) {
       toast.error("Please fill in all required fields.");
       return;
     }
-    const newUser: User = {
-      id: Math.max(...users.map((u) => u.id), 0) + 1,
-      name: formData.name.trim(),
-      email: formData.email.trim(),
-      phone: formData.phone.trim(),
-      role: formData.role,
-      status: "active",
-      lastLogin: "Never",
-    };
-    setUsers((prev) => [...prev, newUser]);
-    setAddOpen(false);
-    toast.success(`${newUser.name} has been added as ${roleLabels[newUser.role]}.`);
+    try {
+      await apiClient.post("/users", formData);
+      toast.success(`${formData.name} has been added as ${roleLabels[formData.role]}.`);
+      setAddOpen(false);
+      fetchUsers();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || "Failed to add user";
+      toast.error(msg);
+    }
   }
 
   // --- Edit User ---
   function handleOpenEdit(user: User) {
     setSelectedUser(user);
     setFormData({
+      username: user.username,
       name: user.name,
-      email: user.email,
-      phone: user.phone,
       password: "",
       role: user.role,
     });
     setEditOpen(true);
   }
 
-  function handleEditSubmit() {
+  async function handleEditSubmit() {
     if (!selectedUser) return;
-    if (!formData.name.trim() || !formData.email.trim()) {
-      toast.error("Name and email are required.");
+    if (!formData.username.trim() || !formData.name.trim()) {
+      toast.error("Username and name are required.");
       return;
     }
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === selectedUser.id
-          ? {
-              ...u,
-              name: formData.name.trim(),
-              email: formData.email.trim(),
-              phone: formData.phone.trim(),
-              role: formData.role,
-            }
-          : u
-      )
-    );
-    setEditOpen(false);
-    toast.success(`${formData.name.trim()} has been updated.`);
+
+    const updateData: Record<string, unknown> = {
+      id: selectedUser.id,
+      username: formData.username.trim(),
+      name: formData.name.trim(),
+      role: formData.role,
+    };
+    if (formData.password.trim()) {
+      updateData.password = formData.password.trim();
+    }
+
+    try {
+      await apiClient.put("/users", updateData);
+      toast.success(`${formData.name.trim()} has been updated.`);
+      setEditOpen(false);
+      fetchUsers();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error || "Failed to update user";
+      toast.error(msg);
+    }
   }
 
   // --- Deactivate / Reactivate ---
@@ -257,48 +177,21 @@ export default function UsersPage() {
     setDeactivateOpen(true);
   }
 
-  function handleDeactivateConfirm() {
+  async function handleDeactivateConfirm() {
     if (!selectedUser) return;
-    const newStatus = selectedUser.status === "active" ? "inactive" : "active";
-    setUsers((prev) =>
-      prev.map((u) => (u.id === selectedUser.id ? { ...u, status: newStatus } : u))
-    );
-    setDeactivateOpen(false);
-    toast.success(
-      newStatus === "inactive"
-        ? `${selectedUser.name} has been deactivated.`
-        : `${selectedUser.name} has been reactivated.`
-    );
-  }
-
-  // --- View / Edit Permissions ---
-  function handleOpenPermissions(user: User) {
-    setSelectedUser(user);
-    setEditingPermissions(false);
-    setPermissionsOpen(true);
-  }
-
-  function handleTogglePermission(role: Role, mod: string) {
-    setCustomPermissions((prev) => ({
-      ...prev,
-      [role]: { ...prev[role], [mod]: !prev[role][mod] },
-    }));
-  }
-
-  function handleSavePermissions() {
-    setEditingPermissions(false);
-    toast.success(`Permissions updated for ${roleLabels[selectedUser!.role]} role.`);
-  }
-
-  function handleCancelEditPermissions() {
-    if (selectedUser) {
-      // Revert changes for this role
-      setCustomPermissions((prev) => ({
-        ...prev,
-        [selectedUser.role]: { ...rolePermissions[selectedUser.role] },
-      }));
+    const newStatus = !selectedUser.active;
+    try {
+      await apiClient.put("/users", { id: selectedUser.id, active: newStatus });
+      toast.success(
+        newStatus
+          ? `${selectedUser.name} has been reactivated.`
+          : `${selectedUser.name} has been deactivated.`
+      );
+      setDeactivateOpen(false);
+      fetchUsers();
+    } catch {
+      toast.error("Failed to update user status");
     }
-    setEditingPermissions(false);
   }
 
   return (
@@ -320,86 +213,83 @@ export default function UsersPage() {
       {/* Users Table */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last Login</TableHead>
-                <TableHead className="w-10" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                          {u.name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .slice(0, 2)
-                            .toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="text-sm font-medium">{u.name}</p>
-                        <p className="text-xs text-muted-foreground">{u.email}</p>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium capitalize ${roleColors[u.role]}`}
-                    >
-                      <Shield className="h-3 w-3" />
-                      {u.role.replace("_", " ")}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={u.status === "active" ? "secondary" : "outline"}
-                      className="text-xs capitalize"
-                    >
-                      {u.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {u.lastLogin}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleOpenEdit(u)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleOpenPermissions(u)}>
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Permissions
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleOpenDeactivate(u)}
-                        >
-                          <UserX className="h-4 w-4 mr-2" />
-                          {u.status === "active" ? "Deactivate" : "Reactivate"}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+          {loading ? (
+            <div className="py-10 text-center text-muted-foreground">Loading users...</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Username</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-10" />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {users.map((u) => (
+                  <TableRow key={u.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9">
+                          <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
+                            {u.name
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <p className="text-sm font-medium">{u.name}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm font-mono text-muted-foreground">
+                      {u.username}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium capitalize ${roleColors[u.role]}`}
+                      >
+                        <Shield className="h-3 w-3" />
+                        {u.role.replace("_", " ")}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={u.active ? "secondary" : "outline"}
+                        className="text-xs capitalize"
+                      >
+                        {u.active ? "active" : "inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleOpenEdit(u)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleOpenDeactivate(u)}
+                          >
+                            <UserX className="h-4 w-4 mr-2" />
+                            {u.active ? "Deactivate" : "Reactivate"}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -409,7 +299,7 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>Add User</DialogTitle>
             <DialogDescription>
-              Create a new staff account. They will receive login credentials.
+              Create a new staff account with username and password.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
@@ -423,23 +313,12 @@ export default function UsersPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="add-email">Email *</Label>
+              <Label htmlFor="add-username">Username *</Label>
               <Input
-                id="add-email"
-                type="email"
-                placeholder="ravi@tbg.com"
-                value={formData.email}
-                onChange={(e) => setFormData((f) => ({ ...f, email: e.target.value }))}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="add-phone">Phone</Label>
-              <Input
-                id="add-phone"
-                type="tel"
-                placeholder="+91 98765 43215"
-                value={formData.phone}
-                onChange={(e) => setFormData((f) => ({ ...f, phone: e.target.value }))}
+                id="add-username"
+                placeholder="e.g. ravi"
+                value={formData.username}
+                onChange={(e) => setFormData((f) => ({ ...f, username: e.target.value }))}
               />
             </div>
             <div className="grid gap-2">
@@ -462,7 +341,6 @@ export default function UsersPage() {
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="owner">Owner</SelectItem>
                   <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="cashier">Cashier</SelectItem>
                   <SelectItem value="inventory_staff">Inventory Staff</SelectItem>
@@ -498,21 +376,11 @@ export default function UsersPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="edit-email">Email *</Label>
+              <Label htmlFor="edit-username">Username *</Label>
               <Input
-                id="edit-email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData((f) => ({ ...f, email: e.target.value }))}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="edit-phone">Phone</Label>
-              <Input
-                id="edit-phone"
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => setFormData((f) => ({ ...f, phone: e.target.value }))}
+                id="edit-username"
+                value={formData.username}
+                onChange={(e) => setFormData((f) => ({ ...f, username: e.target.value }))}
               />
             </div>
             <div className="grid gap-2">
@@ -557,10 +425,10 @@ export default function UsersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {selectedUser?.status === "active" ? "Deactivate" : "Reactivate"} User
+              {selectedUser?.active ? "Deactivate" : "Reactivate"} User
             </DialogTitle>
             <DialogDescription>
-              {selectedUser?.status === "active" ? (
+              {selectedUser?.active ? (
                 <>
                   <span className="font-semibold text-foreground">{selectedUser?.name}</span>{" "}
                   will no longer be able to access the system. Deactivate?
@@ -578,122 +446,14 @@ export default function UsersPage() {
               Cancel
             </Button>
             <Button
-              variant={selectedUser?.status === "active" ? "destructive" : "default"}
+              variant={selectedUser?.active ? "destructive" : "default"}
               onClick={handleDeactivateConfirm}
             >
-              {selectedUser?.status === "active" ? "Deactivate" : "Reactivate"}
+              {selectedUser?.active ? "Deactivate" : "Reactivate"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* ============ View Permissions Sheet ============ */}
-      <Sheet open={permissionsOpen} onOpenChange={setPermissionsOpen}>
-        <SheetContent side="right" className="sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              Permissions
-            </SheetTitle>
-            <SheetDescription>
-              RBAC permissions for{" "}
-              <span className="font-medium text-foreground">{selectedUser?.name}</span>
-            </SheetDescription>
-          </SheetHeader>
-
-          {selectedUser && (
-            <div className="px-4 pb-6 space-y-4">
-              {/* Role badge + edit button */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Role:</span>
-                  <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium capitalize ${roleColors[selectedUser.role]}`}
-                  >
-                    <Shield className="h-3 w-3" />
-                    {selectedUser.role.replace("_", " ")}
-                  </span>
-                </div>
-                {!editingPermissions && selectedUser.role !== "owner" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 h-8 text-xs"
-                    onClick={() => setEditingPermissions(true)}
-                  >
-                    <Edit className="h-3.5 w-3.5" />
-                    Edit
-                  </Button>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Permissions matrix */}
-              <div className="space-y-1">
-                <p className="text-sm font-medium mb-3">Module Access</p>
-                <div className="rounded-lg border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-xs">Module</TableHead>
-                        <TableHead className="text-xs text-center w-20">Access</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {permissionModules.map((mod) => {
-                        const hasAccess = customPermissions[selectedUser.role][mod];
-                        const isEditable = editingPermissions && selectedUser.role !== "owner";
-                        return (
-                          <TableRow
-                            key={mod}
-                            className={isEditable ? "cursor-pointer hover:bg-muted/50" : ""}
-                            onClick={isEditable ? () => handleTogglePermission(selectedUser.role, mod) : undefined}
-                          >
-                            <TableCell className="text-sm py-2.5">{mod}</TableCell>
-                            <TableCell className="text-center py-2.5">
-                              {hasAccess ? (
-                                <Check className={`h-4 w-4 mx-auto ${isEditable ? "text-emerald-500" : "text-emerald-600"}`} />
-                              ) : (
-                                <X className={`h-4 w-4 mx-auto ${isEditable ? "text-red-400" : "text-muted-foreground/50"}`} />
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-
-              {editingPermissions && (
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" size="sm" onClick={handleCancelEditPermissions}>
-                    Cancel
-                  </Button>
-                  <Button size="sm" onClick={handleSavePermissions}>
-                    Save Permissions
-                  </Button>
-                </div>
-              )}
-
-              <Separator />
-
-              <div className="text-xs text-muted-foreground">
-                {selectedUser.role === "owner"
-                  ? "Owners have full access to all modules and system settings."
-                  : editingPermissions
-                    ? "Click on a row to toggle access for the module."
-                    : selectedUser.role === "manager"
-                      ? "Managers can handle day-to-day operations but cannot manage users or system settings."
-                      : selectedUser.role === "cashier"
-                        ? "Cashiers can only access POS billing, non-billed sales, and customer records."
-                        : "Inventory staff can manage products, inventory, suppliers, and purchase orders."}
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }
