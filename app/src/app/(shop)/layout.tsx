@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,14 +16,14 @@ import {
   ShoppingCart,
   User,
   Search,
-  Menu,
-  ChevronDown,
   Package,
   LogIn,
-  Heart,
+  LogOut,
+  UserPlus,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useCustomerStore } from "@/frontend/store/customerStore";
 
 const categories = [
   "All",
@@ -30,7 +31,8 @@ const categories = [
   "Riding Jackets",
   "Riding Gloves",
   "Riding Boots",
-  "Accessories",
+  "Bike Accessories",
+  "Luggage & Bags",
   "Protection Gear",
 ];
 
@@ -40,6 +42,28 @@ export default function ShopLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const { customer, token, hydrateCustomer, clearCustomerAuth } = useCustomerStore();
+  const [cartCount, setCartCount] = useState(0);
+
+  useEffect(() => {
+    hydrateCustomer();
+  }, [hydrateCustomer]);
+
+  useEffect(() => {
+    if (token) {
+      fetch("/api/shop/cart", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          const items = data.items || [];
+          setCartCount(items.reduce((sum: number, i: { quantity: number }) => sum + i.quantity, 0));
+        })
+        .catch(() => {});
+    } else {
+      setCartCount(0);
+    }
+  }, [token, pathname]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -62,7 +86,7 @@ export default function ShopLayout({
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-3 shrink-0">
+            <Link href="/shop" className="flex items-center gap-3 shrink-0">
               <div className="h-9 w-9 rounded-xl bg-brand flex items-center justify-center">
                 <span className="text-brand-foreground font-bold">B</span>
               </div>
@@ -90,9 +114,11 @@ export default function ShopLayout({
               <Link href="/cart">
                 <Button variant="ghost" size="icon" className="relative">
                   <ShoppingCart className="h-5 w-5" />
-                  <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] bg-brand text-brand-foreground">
-                    3
-                  </Badge>
+                  {cartCount > 0 && (
+                    <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] bg-brand text-brand-foreground">
+                      {cartCount}
+                    </Badge>
+                  )}
                 </Button>
               </Link>
               <DropdownMenu>
@@ -102,19 +128,48 @@ export default function ShopLayout({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem asChild>
-                    <Link href="/login" className="gap-2">
-                      <LogIn className="h-4 w-4" />
-                      Sign In
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/my-orders" className="gap-2">
-                      <Package className="h-4 w-4" />
-                      My Orders
-                    </Link>
-                  </DropdownMenuItem>
+                  {customer ? (
+                    <>
+                      <div className="px-2 py-1.5 text-sm font-medium">{customer.name}</div>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link href="/my-orders" className="gap-2">
+                          <Package className="h-4 w-4" />
+                          My Orders
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="gap-2 text-destructive"
+                        onClick={() => clearCustomerAuth()}
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Sign Out
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/customer-login" className="gap-2">
+                          <LogIn className="h-4 w-4" />
+                          Sign In
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/register" className="gap-2">
+                          <UserPlus className="h-4 w-4" />
+                          Create Account
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link href="/my-orders" className="gap-2">
+                          <Package className="h-4 w-4" />
+                          My Orders
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -129,7 +184,7 @@ export default function ShopLayout({
               return (
                 <Link
                   key={cat}
-                  href="/shop"
+                  href={cat === "All" ? "/shop" : `/shop?category=${encodeURIComponent(cat)}`}
                   className={cn(
                     "px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
                     isActive

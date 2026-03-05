@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,11 +19,113 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CreditCard, Smartphone, ShieldCheck, Lock } from "lucide-react";
+import { CreditCard, Smartphone, ShieldCheck, Lock, Loader2, Banknote } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { useCustomerStore, type CartItem } from "@/frontend/store/customerStore";
+
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi",
+];
 
 export default function CheckoutPage() {
-  const [paymentMethod, setPaymentMethod] = useState("upi");
+  const router = useRouter();
+  const { token, hydrateCustomer } = useCustomerStore();
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [placing, setPlacing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("cod");
+
+  const [address, setAddress] = useState({
+    label: "Home",
+    line1: "",
+    line2: "",
+    city: "",
+    state: "",
+    pincode: "",
+  });
+  const [phone, setPhone] = useState("");
+
+  useEffect(() => {
+    hydrateCustomer();
+  }, [hydrateCustomer]);
+
+  useEffect(() => {
+    if (token) fetchCart();
+    else {
+      setLoading(false);
+      router.push("/register");
+    }
+  }, [token, router]);
+
+  async function fetchCart() {
+    try {
+      const res = await fetch("/api/shop/cart", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setCartItems(data.items || []);
+    } catch {
+      toast.error("Failed to load cart");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const subtotal = cartItems.reduce(
+    (sum, item) => sum + item.product.sellingPrice * item.quantity,
+    0
+  );
+  const gst = Math.round(subtotal * 0.18);
+  const shipping = subtotal >= 2000 ? 0 : 99;
+  const total = subtotal + shipping;
+
+  async function handlePlaceOrder() {
+    if (!address.line1 || !address.city || !address.state || !address.pincode) {
+      toast.error("Please fill in all address fields");
+      return;
+    }
+
+    setPlacing(true);
+    try {
+      const res = await fetch("/api/shop/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          address,
+          paymentMethod,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to place order");
+      }
+
+      const data = await res.json();
+      toast.success(`Order ${data.order.orderNumber} placed successfully!`);
+      router.push("/my-orders");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to place order");
+    } finally {
+      setPlacing(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
@@ -36,51 +139,63 @@ export default function CheckoutPage() {
               <CardTitle className="text-base">Shipping Address</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>First Name</Label>
-                  <Input placeholder="John" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Last Name</Label>
-                  <Input placeholder="Doe" />
-                </div>
-              </div>
               <div className="space-y-2">
-                <Label>Address Line 1</Label>
-                <Input placeholder="123 Main Street" />
+                <Label>Address Line 1 *</Label>
+                <Input
+                  placeholder="123 Main Street"
+                  value={address.line1}
+                  onChange={(e) => setAddress({ ...address, line1: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Address Line 2</Label>
-                <Input placeholder="Apt, Suite, etc. (optional)" />
+                <Input
+                  placeholder="Apt, Suite, etc. (optional)"
+                  value={address.line2}
+                  onChange={(e) => setAddress({ ...address, line2: e.target.value })}
+                />
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>City</Label>
-                  <Input placeholder="Bangalore" />
+                  <Label>City *</Label>
+                  <Input
+                    placeholder="Kolkata"
+                    value={address.city}
+                    onChange={(e) => setAddress({ ...address, city: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>State</Label>
-                  <Select>
+                  <Label>State *</Label>
+                  <Select
+                    value={address.state}
+                    onValueChange={(val) => setAddress({ ...address, state: val })}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ka">Karnataka</SelectItem>
-                      <SelectItem value="mh">Maharashtra</SelectItem>
-                      <SelectItem value="tn">Tamil Nadu</SelectItem>
-                      <SelectItem value="dl">Delhi</SelectItem>
+                      {INDIAN_STATES.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Pincode</Label>
-                  <Input placeholder="560001" />
+                  <Label>Pincode *</Label>
+                  <Input
+                    placeholder="700001"
+                    value={address.pincode}
+                    onChange={(e) => setAddress({ ...address, pincode: e.target.value })}
+                  />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Phone</Label>
-                <Input placeholder="+91 98765 43210" />
+                <Input
+                  placeholder="+91 98765 43210"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
               </div>
             </CardContent>
           </Card>
@@ -91,8 +206,9 @@ export default function CheckoutPage() {
               <CardTitle className="text-base">Payment Method</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 {[
+                  { value: "cod", icon: Banknote, label: "Cash on Delivery" },
                   { value: "upi", icon: Smartphone, label: "UPI" },
                   { value: "card", icon: CreditCard, label: "Card" },
                 ].map((pm) => {
@@ -122,32 +238,6 @@ export default function CheckoutPage() {
                   );
                 })}
               </div>
-
-              {paymentMethod === "card" && (
-                <div className="space-y-4 pt-2">
-                  <div className="space-y-2">
-                    <Label>Card Number</Label>
-                    <Input placeholder="1234 5678 9012 3456" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Expiry</Label>
-                      <Input placeholder="MM/YY" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>CVV</Label>
-                      <Input placeholder="123" type="password" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {paymentMethod === "upi" && (
-                <div className="space-y-2 pt-2">
-                  <Label>UPI ID</Label>
-                  <Input placeholder="yourname@upi" />
-                </div>
-              )}
             </CardContent>
           </Card>
         </div>
@@ -160,20 +250,13 @@ export default function CheckoutPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
-                {[
-                  { name: "MT Thunder 3 Helmet", qty: 1, price: 5500 },
-                  { name: "Rynox Storm Evo Jacket", qty: 1, price: 5990 },
-                  { name: "Quad Lock Phone Mount", qty: 2, price: 6400 },
-                ].map((item) => (
-                  <div
-                    key={item.name}
-                    className="flex justify-between text-sm"
-                  >
+                {cartItems.map((item) => (
+                  <div key={item.id} className="flex justify-between text-sm">
                     <span className="text-muted-foreground">
-                      {item.name}{" "}
-                      {item.qty > 1 && `x${item.qty}`}
+                      {item.product.name}{" "}
+                      {item.quantity > 1 && `x${item.quantity}`}
                     </span>
-                    <span>&#8377;{item.price.toLocaleString("en-IN")}</span>
+                    <span>&#8377;{(item.product.sellingPrice * item.quantity).toLocaleString("en-IN")}</span>
                   </div>
                 ))}
               </div>
@@ -183,15 +266,15 @@ export default function CheckoutPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span>&#8377;17,890</span>
+                  <span>&#8377;{subtotal.toLocaleString("en-IN")}</span>
                 </div>
-                <div className="flex justify-between text-emerald-600">
-                  <span>Shipping</span>
-                  <span>Free</span>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Shipping</span>
+                  <span>{shipping === 0 ? <span className="text-emerald-600">Free</span> : `₹${shipping}`}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">GST (incl.)</span>
-                  <span>&#8377;2,736</span>
+                  <span>&#8377;{gst.toLocaleString("en-IN")}</span>
                 </div>
               </div>
 
@@ -199,17 +282,25 @@ export default function CheckoutPage() {
 
               <div className="flex justify-between items-baseline">
                 <span className="font-semibold">Total</span>
-                <span className="text-xl font-bold">&#8377;17,890</span>
+                <span className="text-xl font-bold">&#8377;{total.toLocaleString("en-IN")}</span>
               </div>
 
-              <Button className="w-full h-12 gap-2 bg-brand hover:bg-brand/90 text-brand-foreground text-base">
-                <Lock className="h-4 w-4" />
-                Pay &#8377;17,890
+              <Button
+                className="w-full h-12 gap-2 bg-brand hover:bg-brand/90 text-brand-foreground text-base"
+                onClick={handlePlaceOrder}
+                disabled={placing || cartItems.length === 0}
+              >
+                {placing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Lock className="h-4 w-4" />
+                )}
+                {placing ? "Placing Order..." : `Pay ₹${total.toLocaleString("en-IN")}`}
               </Button>
 
               <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                Secure checkout powered by Razorpay
+                Secure checkout
               </div>
             </CardContent>
           </Card>
