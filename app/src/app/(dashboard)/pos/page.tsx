@@ -971,9 +971,9 @@ export default function POSPage() {
                             </div>
                           </td>
                           <td className="border border-foreground/80 p-0.5">
-                            <Input
+                            <input
                               type="number"
-                              className="w-full h-5 text-[8px] text-right px-1 border-0 bg-transparent"
+                              className="w-full h-5 text-[10px] text-right px-0.5 border-0 bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               value={it.overridePrice ?? it.product.price}
                               onChange={(e) => {
                                 const val = Number(e.target.value);
@@ -982,19 +982,19 @@ export default function POSPage() {
                             />
                           </td>
                           <td className="border border-foreground/80 p-0.5">
-                            <Input
+                            <input
                               type="number"
-                              className="w-full h-5 text-[10px] text-right px-1 border-0 bg-transparent"
+                              className="w-full h-5 text-[10px] text-right px-0.5 border-0 bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               value={it.discount || ""}
                               placeholder="0"
                               onChange={(e) => updateItemDiscount(it.product.id, Number(e.target.value) || 0)}
                             />
                           </td>
                           <td className="border border-foreground/80 p-1 text-right">{taxableValue.toFixed(2)}</td>
-                          <td className="border border-foreground/80 p-0.5 text-center">
+                          <td className="border border-foreground/80 p-0 text-center">
                             {isCash ? "-" : (
                               <select
-                                className="w-full h-5 text-[8px] text-center bg-transparent border-0 outline-none cursor-pointer"
+                                className="w-full h-5 text-[10px] text-center bg-transparent border-none outline-none cursor-pointer appearance-none px-0"
                                 value={gstRate}
                                 onChange={(e) => {
                                   const val = Number(e.target.value);
@@ -1010,10 +1010,10 @@ export default function POSPage() {
                             )}
                           </td>
                           <td className="border border-foreground/80 p-1 text-right">{isCash ? "-" : sgst.toFixed(2)}</td>
-                          <td className="border border-foreground/80 p-0.5 text-center">
+                          <td className="border border-foreground/80 p-0 text-center">
                             {isCash ? "-" : (
                               <select
-                                className="w-full h-5 text-[8px] text-center bg-transparent border-0 outline-none cursor-pointer"
+                                className="w-full h-5 text-[10px] text-center bg-transparent border-none outline-none cursor-pointer appearance-none px-0"
                                 value={gstRate}
                                 onChange={(e) => {
                                   const val = Number(e.target.value);
