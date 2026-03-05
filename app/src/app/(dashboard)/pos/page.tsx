@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +111,50 @@ export default function POSPage() {
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [globalDiscount, setGlobalDiscount] = useState(0);
   const [invoiceNo] = useState(() => String(Date.now()).slice(-6));
+
+  // Invoice preview
+  const [invoicePreviewOpen, setInvoicePreviewOpen] = useState(false);
+  const [invoiceSnapshot, setInvoiceSnapshot] = useState<{
+    invoiceNo: string;
+    items: InvoiceItem[];
+    subtotal: number;
+    totalGst: number;
+    globalDiscount: number;
+    grandTotal: number;
+    paymentMethod: string;
+    date: string;
+  } | null>(null);
+  const printRef = useRef<HTMLDivElement>(null);
+
+  const handlePrint = useCallback(() => {
+    if (!printRef.current) return;
+    const printWindow = window.open("", "_blank", "width=400,height=700");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html><head><title>Invoice #${invoiceSnapshot?.invoiceNo}</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Courier New', monospace; font-size: 12px; padding: 10px; max-width: 300px; margin: 0 auto; }
+        .center { text-align: center; }
+        .right { text-align: right; }
+        .bold { font-weight: bold; }
+        .line { border-top: 1px dashed #000; margin: 6px 0; }
+        .row { display: flex; justify-content: space-between; padding: 2px 0; }
+        .item-name { font-weight: bold; }
+        .item-detail { padding-left: 10px; color: #555; }
+        h2 { font-size: 16px; margin: 4px 0; }
+        h3 { font-size: 13px; margin: 2px 0; }
+        .footer { margin-top: 12px; font-size: 10px; color: #777; }
+        @media print { body { padding: 0; } }
+      </style></head><body>
+      ${printRef.current.innerHTML}
+      </body></html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  }, [invoiceSnapshot?.invoiceNo]);
 
   // New product form
   const [newProduct, setNewProduct] = useState({
@@ -223,6 +267,22 @@ export default function POSPage() {
       toast.error("Add items to the invoice first");
       return;
     }
+
+    // Snapshot the invoice data before clearing
+    setInvoiceSnapshot({
+      invoiceNo,
+      items: [...items],
+      subtotal,
+      totalGst,
+      globalDiscount,
+      grandTotal,
+      paymentMethod,
+      date: new Date().toLocaleString("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }),
+    });
+    setInvoicePreviewOpen(true);
 
     // Deduct stock for each item
     setProducts(
@@ -729,19 +789,120 @@ export default function POSPage() {
                   <Receipt className="h-5 w-5" />
                   Generate Invoice
                 </Button>
-                <Button
-                  variant="outline"
-                  className="w-full gap-2"
-                  disabled={items.length === 0}
-                >
-                  <Printer className="h-4 w-4" />
-                  Print Receipt
-                </Button>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Invoice Preview Dialog */}
+      <Dialog open={invoicePreviewOpen} onOpenChange={setInvoicePreviewOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Invoice Preview
+            </DialogTitle>
+            <DialogDescription>
+              Review the invoice below before printing.
+            </DialogDescription>
+          </DialogHeader>
+
+          {invoiceSnapshot && (
+            <>
+              {/* Printable receipt content */}
+              <div ref={printRef}>
+                <div className="border rounded-lg p-5 bg-white text-black text-sm space-y-3">
+                  {/* Header */}
+                  <div className="text-center space-y-0.5">
+                    <h2 className="text-base font-bold">THE BIKER GENOME</h2>
+                    <p className="text-[11px] text-gray-500">Premium Riding Gear</p>
+                    <div className="border-t border-dashed border-gray-300 my-2" />
+                    <div className="flex justify-between text-[11px] text-gray-600">
+                      <span>Invoice #{invoiceSnapshot.invoiceNo}</span>
+                      <span>{invoiceSnapshot.date}</span>
+                    </div>
+                    <div className="text-[11px] text-gray-600 text-left">
+                      Payment: {invoiceSnapshot.paymentMethod.toUpperCase()}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-dashed border-gray-300" />
+
+                  {/* Items */}
+                  <div className="space-y-2">
+                    {invoiceSnapshot.items.map((it) => {
+                      const lineSubtotal = it.product.price * it.quantity - it.discount;
+                      const lineGst = (lineSubtotal * it.product.gst) / 100;
+                      const lineTotal = lineSubtotal + lineGst;
+                      return (
+                        <div key={it.product.id}>
+                          <div className="flex justify-between">
+                            <span className="font-medium text-xs truncate max-w-[200px]">
+                              {it.product.name}
+                            </span>
+                            <span className="font-semibold text-xs whitespace-nowrap ml-2">
+                              &#8377;{lineTotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-gray-500 flex gap-3">
+                            <span>{it.quantity} x &#8377;{it.product.price.toLocaleString("en-IN")}</span>
+                            <span>GST {it.product.gst}%</span>
+                            {it.discount > 0 && <span>Disc -&#8377;{it.discount}</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="border-t border-dashed border-gray-300" />
+
+                  {/* Totals */}
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Subtotal</span>
+                      <span>&#8377;{invoiceSnapshot.subtotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">GST</span>
+                      <span>&#8377;{invoiceSnapshot.totalGst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                    </div>
+                    {invoiceSnapshot.globalDiscount > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Discount</span>
+                        <span>-&#8377;{invoiceSnapshot.globalDiscount.toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
+                    <div className="border-t border-dashed border-gray-300 pt-1" />
+                    <div className="flex justify-between text-sm font-bold">
+                      <span>TOTAL</span>
+                      <span>&#8377;{invoiceSnapshot.grandTotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-dashed border-gray-300" />
+
+                  {/* Footer */}
+                  <div className="text-center space-y-0.5">
+                    <p className="text-[10px] text-gray-400">Thank you for shopping with us!</p>
+                    <p className="text-[10px] text-gray-400">www.thebikergenome.com</p>
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <DialogClose asChild>
+                  <Button variant="outline">Close</Button>
+                </DialogClose>
+                <Button className="gap-2" onClick={handlePrint}>
+                  <Printer className="h-4 w-4" />
+                  Print Invoice
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
