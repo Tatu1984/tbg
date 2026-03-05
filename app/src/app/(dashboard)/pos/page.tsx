@@ -96,6 +96,7 @@ interface InvoiceItem {
   product: Product;
   quantity: number;
   discount: number;
+  discountType: "flat" | "percent";
   overridePrice: number | null;
   overrideGst: number | null;
 }
@@ -165,7 +166,10 @@ function generateInvoiceHTML(snap: InvoiceSnapshotType): string {
   const itemRows = snap.items.map((it, i) => {
     const unitPrice = it.overridePrice ?? it.product.price;
     const gstRate = it.overrideGst ?? it.product.gst;
-    const taxableValue = unitPrice * it.quantity - it.discount;
+    const discAmt = it.discountType === "percent"
+      ? Math.round(unitPrice * it.quantity * it.discount / 100 * 100) / 100
+      : it.discount;
+    const taxableValue = unitPrice * it.quantity - discAmt;
     const halfRate = gstRate / 2;
     const sgst = snap.isCash ? 0 : taxableValue * halfRate / 100;
     const cgst = snap.isCash ? 0 : taxableValue * halfRate / 100;
@@ -359,6 +363,7 @@ export default function POSPage() {
   const [newProductOpen, setNewProductOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [globalDiscount, setGlobalDiscount] = useState(0);
+  const [globalDiscountType, setGlobalDiscountType] = useState<"flat" | "percent">("flat");
   const [invoiceCounter] = useState(() => Number(String(Date.now()).slice(-4)));
   const [cashCounter, setCashCounter] = useState(1);
   const [regularCounter, setRegularCounter] = useState(1);
@@ -450,7 +455,7 @@ export default function POSPage() {
         )
       );
     } else {
-      setItems([...items, { product, quantity: 1, discount: 0, overridePrice: null, overrideGst: null }]);
+      setItems([...items, { product, quantity: 1, discount: 0, discountType: "flat", overridePrice: null, overrideGst: null }]);
     }
     toast.success(`Added ${product.name}`);
   }
@@ -511,8 +516,16 @@ export default function POSPage() {
     return it.overrideGst ?? it.product.gst;
   }
 
+  function getItemDiscountAmount(it: InvoiceItem) {
+    const lineValue = getUnitPrice(it) * it.quantity;
+    if (it.discountType === "percent") {
+      return Math.round(lineValue * it.discount / 100 * 100) / 100;
+    }
+    return it.discount;
+  }
+
   const subtotal = items.reduce(
-    (sum, it) => sum + getUnitPrice(it) * it.quantity - it.discount,
+    (sum, it) => sum + getUnitPrice(it) * it.quantity - getItemDiscountAmount(it),
     0
   );
   const totalGst = isCash
@@ -520,10 +533,13 @@ export default function POSPage() {
     : items.reduce(
         (sum, it) =>
           sum +
-          ((getUnitPrice(it) * it.quantity - it.discount) * getGstRate(it)) / 100,
+          ((getUnitPrice(it) * it.quantity - getItemDiscountAmount(it)) * getGstRate(it)) / 100,
         0
       );
-  const grandTotal = subtotal + totalGst - globalDiscount;
+  const globalDiscountAmount = globalDiscountType === "percent"
+    ? Math.round((subtotal + totalGst) * globalDiscount / 100 * 100) / 100
+    : globalDiscount;
+  const grandTotal = subtotal + totalGst - globalDiscountAmount;
 
   function handleNewProduct(e: React.FormEvent) {
     e.preventDefault();
@@ -577,7 +593,7 @@ export default function POSPage() {
       customer: { ...customer },
       subtotal,
       totalGst,
-      globalDiscount,
+      globalDiscount: globalDiscountAmount,
       grandTotal,
       paymentMethod,
       isCash,
@@ -607,6 +623,7 @@ export default function POSPage() {
     );
     setItems([]);
     setGlobalDiscount(0);
+    setGlobalDiscountType("flat");
     setCustomer({ name: "", phone: "", address: "", gstin: "", stateCode: "" });
   }
 
@@ -894,7 +911,7 @@ export default function POSPage() {
                         const unitPrice = getUnitPrice(it);
                         const gstRate = getGstRate(it);
                         const lineSubtotal =
-                          unitPrice * it.quantity - it.discount;
+                          unitPrice * it.quantity - getItemDiscountAmount(it);
                         const lineGst = isCash
                           ? 0
                           : (lineSubtotal * gstRate) / 100;
@@ -962,18 +979,36 @@ export default function POSPage() {
                               />
                             </TableCell>
                             <TableCell className="text-right">
-                              <Input
-                                type="number"
-                                className="w-16 h-7 text-xs text-right ml-auto"
-                                value={it.discount || ""}
-                                placeholder="0"
-                                onChange={(e) =>
-                                  updateItemDiscount(
-                                    it.product.id,
-                                    Number(e.target.value) || 0
-                                  )
-                                }
-                              />
+                              <div className="flex items-center justify-end gap-0.5">
+                                <Input
+                                  type="number"
+                                  className="w-14 h-7 text-xs text-right"
+                                  value={it.discount || ""}
+                                  placeholder="0"
+                                  onChange={(e) =>
+                                    updateItemDiscount(
+                                      it.product.id,
+                                      Number(e.target.value) || 0
+                                    )
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="text-[10px] font-bold px-1 h-7 rounded border hover:bg-muted transition-colors min-w-[24px]"
+                                  onClick={() =>
+                                    setItems(
+                                      items.map((i) =>
+                                        i.product.id === it.product.id
+                                          ? { ...i, discountType: i.discountType === "flat" ? "percent" : "flat", discount: 0 }
+                                          : i
+                                      )
+                                    )
+                                  }
+                                  title={`Switch to ${it.discountType === "flat" ? "%" : "₹"} discount`}
+                                >
+                                  {it.discountType === "flat" ? "₹" : "%"}
+                                </button>
+                              </div>
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-0.5">
@@ -1110,15 +1145,29 @@ export default function POSPage() {
               </div>
               <div className="flex justify-between text-sm items-center">
                 <span className="text-muted-foreground">Extra Discount</span>
-                <Input
-                  type="number"
-                  className="w-20 h-7 text-xs text-right"
-                  value={globalDiscount || ""}
-                  placeholder="0"
-                  onChange={(e) =>
-                    setGlobalDiscount(Number(e.target.value) || 0)
-                  }
-                />
+                <div className="flex items-center gap-0.5">
+                  <Input
+                    type="number"
+                    className="w-16 h-7 text-xs text-right"
+                    value={globalDiscount || ""}
+                    placeholder="0"
+                    onChange={(e) =>
+                      setGlobalDiscount(Number(e.target.value) || 0)
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="text-[10px] font-bold px-1 h-7 rounded border hover:bg-muted transition-colors min-w-[24px]"
+                    onClick={() => {
+                      setGlobalDiscountType(globalDiscountType === "flat" ? "percent" : "flat");
+                      setGlobalDiscount(0);
+    setGlobalDiscountType("flat");
+                    }}
+                    title={`Switch to ${globalDiscountType === "flat" ? "%" : "₹"} discount`}
+                  >
+                    {globalDiscountType === "flat" ? "₹" : "%"}
+                  </button>
+                </div>
               </div>
               <Separator />
               <div className="flex justify-between items-baseline">
