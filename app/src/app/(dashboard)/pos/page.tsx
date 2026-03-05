@@ -95,8 +95,7 @@ type Product = (typeof INITIAL_PRODUCTS)[number];
 interface InvoiceItem {
   product: Product;
   quantity: number;
-  discount: number;
-  discountType: "flat" | "percent";
+  discount: number; // always percentage
   overridePrice: number | null;
   overrideGst: number | null;
 }
@@ -166,9 +165,7 @@ function generateInvoiceHTML(snap: InvoiceSnapshotType): string {
   const itemRows = snap.items.map((it, i) => {
     const unitPrice = it.overridePrice ?? it.product.price;
     const gstRate = it.overrideGst ?? it.product.gst;
-    const discAmt = it.discountType === "percent"
-      ? Math.round(unitPrice * it.quantity * it.discount / 100 * 100) / 100
-      : it.discount;
+    const discAmt = Math.round(unitPrice * it.quantity * it.discount / 100 * 100) / 100;
     const taxableValue = unitPrice * it.quantity - discAmt;
     const halfRate = gstRate / 2;
     const sgst = snap.isCash ? 0 : taxableValue * halfRate / 100;
@@ -363,7 +360,6 @@ export default function POSPage() {
   const [newProductOpen, setNewProductOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [globalDiscount, setGlobalDiscount] = useState(0);
-  const [globalDiscountType, setGlobalDiscountType] = useState<"flat" | "percent">("flat");
   const [invoiceCounter] = useState(() => Number(String(Date.now()).slice(-4)));
   const [cashCounter, setCashCounter] = useState(1);
   const [regularCounter, setRegularCounter] = useState(1);
@@ -455,7 +451,7 @@ export default function POSPage() {
         )
       );
     } else {
-      setItems([...items, { product, quantity: 1, discount: 0, discountType: "flat", overridePrice: null, overrideGst: null }]);
+      setItems([...items, { product, quantity: 1, discount: 0, overridePrice: null, overrideGst: null }]);
     }
     toast.success(`Added ${product.name}`);
   }
@@ -518,10 +514,7 @@ export default function POSPage() {
 
   function getItemDiscountAmount(it: InvoiceItem) {
     const lineValue = getUnitPrice(it) * it.quantity;
-    if (it.discountType === "percent") {
-      return Math.round(lineValue * it.discount / 100 * 100) / 100;
-    }
-    return it.discount;
+    return Math.round(lineValue * it.discount / 100 * 100) / 100;
   }
 
   const subtotal = items.reduce(
@@ -536,10 +529,7 @@ export default function POSPage() {
           ((getUnitPrice(it) * it.quantity - getItemDiscountAmount(it)) * getGstRate(it)) / 100,
         0
       );
-  const globalDiscountAmount = globalDiscountType === "percent"
-    ? Math.round((subtotal + totalGst) * globalDiscount / 100 * 100) / 100
-    : globalDiscount;
-  const grandTotal = subtotal + totalGst - globalDiscountAmount;
+  const grandTotal = subtotal + totalGst - globalDiscount;
 
   function handleNewProduct(e: React.FormEvent) {
     e.preventDefault();
@@ -593,7 +583,7 @@ export default function POSPage() {
       customer: { ...customer },
       subtotal,
       totalGst,
-      globalDiscount: globalDiscountAmount,
+      globalDiscount,
       grandTotal,
       paymentMethod,
       isCash,
@@ -623,7 +613,6 @@ export default function POSPage() {
     );
     setItems([]);
     setGlobalDiscount(0);
-    setGlobalDiscountType("flat");
     setCustomer({ name: "", phone: "", address: "", gstin: "", stateCode: "" });
   }
 
@@ -899,7 +888,7 @@ export default function POSPage() {
                       <TableHead className="w-[40%]">Product</TableHead>
                       <TableHead className="text-center">Qty</TableHead>
                       <TableHead className="text-right">Price</TableHead>
-                      <TableHead className="text-right">Disc</TableHead>
+                      <TableHead className="text-right">Disc %</TableHead>
                       <TableHead className="text-right">GST</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead className="w-10" />
@@ -992,22 +981,7 @@ export default function POSPage() {
                                     )
                                   }
                                 />
-                                <button
-                                  type="button"
-                                  className="text-[10px] font-bold px-1 h-7 rounded border hover:bg-muted transition-colors min-w-[24px]"
-                                  onClick={() =>
-                                    setItems(
-                                      items.map((i) =>
-                                        i.product.id === it.product.id
-                                          ? { ...i, discountType: i.discountType === "flat" ? "percent" : "flat", discount: 0 }
-                                          : i
-                                      )
-                                    )
-                                  }
-                                  title={`Switch to ${it.discountType === "flat" ? "%" : "₹"} discount`}
-                                >
-                                  {it.discountType === "flat" ? "₹" : "%"}
-                                </button>
+                                <span className="text-[10px] text-muted-foreground">%</span>
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
@@ -1144,8 +1118,9 @@ export default function POSPage() {
                 </span>
               </div>
               <div className="flex justify-between text-sm items-center">
-                <span className="text-muted-foreground">Extra Discount</span>
+                <span className="text-muted-foreground">Discount (₹)</span>
                 <div className="flex items-center gap-0.5">
+                  <span className="text-[10px] text-muted-foreground">₹</span>
                   <Input
                     type="number"
                     className="w-16 h-7 text-xs text-right"
@@ -1155,18 +1130,6 @@ export default function POSPage() {
                       setGlobalDiscount(Number(e.target.value) || 0)
                     }
                   />
-                  <button
-                    type="button"
-                    className="text-[10px] font-bold px-1 h-7 rounded border hover:bg-muted transition-colors min-w-[24px]"
-                    onClick={() => {
-                      setGlobalDiscountType(globalDiscountType === "flat" ? "percent" : "flat");
-                      setGlobalDiscount(0);
-    setGlobalDiscountType("flat");
-                    }}
-                    title={`Switch to ${globalDiscountType === "flat" ? "%" : "₹"} discount`}
-                  >
-                    {globalDiscountType === "flat" ? "₹" : "%"}
-                  </button>
                 </div>
               </div>
               <Separator />
