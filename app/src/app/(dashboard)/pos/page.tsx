@@ -90,6 +90,7 @@ interface InvoiceItem {
   product: Product;
   quantity: number;
   discount: number;
+  overridePrice: number | null;
 }
 
 const CATEGORIES = [
@@ -110,7 +111,9 @@ export default function POSPage() {
   const [newProductOpen, setNewProductOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [globalDiscount, setGlobalDiscount] = useState(0);
-  const [invoiceNo] = useState(() => String(Date.now()).slice(-6));
+  const [invoiceCounter] = useState(() => Number(String(Date.now()).slice(-4)));
+  const [cashCounter, setCashCounter] = useState(1);
+  const [regularCounter, setRegularCounter] = useState(1);
 
   // Invoice preview
   const [invoicePreviewOpen, setInvoicePreviewOpen] = useState(false);
@@ -123,6 +126,7 @@ export default function POSPage() {
     grandTotal: number;
     paymentMethod: string;
     date: string;
+    isCash: boolean;
   } | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -188,7 +192,7 @@ export default function POSPage() {
         )
       );
     } else {
-      setItems([...items, { product, quantity: 1, discount: 0 }]);
+      setItems([...items, { product, quantity: 1, discount: 0, overridePrice: null }]);
     }
     toast.success(`Added ${product.name}`);
   }
@@ -214,6 +218,14 @@ export default function POSPage() {
     setItems(items.filter((it) => it.product.id !== productId));
   }
 
+  function updateItemPrice(productId: string, price: number | null) {
+    setItems(
+      items.map((it) =>
+        it.product.id === productId ? { ...it, overridePrice: price } : it
+      )
+    );
+  }
+
   function updateItemDiscount(productId: string, discount: number) {
     setItems(
       items.map((it) =>
@@ -223,16 +235,24 @@ export default function POSPage() {
   }
 
   // Calculations
+  const isCash = paymentMethod === "cash";
+
+  function getUnitPrice(it: InvoiceItem) {
+    return it.overridePrice ?? it.product.price;
+  }
+
   const subtotal = items.reduce(
-    (sum, it) => sum + it.product.price * it.quantity - it.discount,
+    (sum, it) => sum + getUnitPrice(it) * it.quantity - it.discount,
     0
   );
-  const totalGst = items.reduce(
-    (sum, it) =>
-      sum +
-      ((it.product.price * it.quantity - it.discount) * it.product.gst) / 100,
-    0
-  );
+  const totalGst = isCash
+    ? 0
+    : items.reduce(
+        (sum, it) =>
+          sum +
+          ((getUnitPrice(it) * it.quantity - it.discount) * it.product.gst) / 100,
+        0
+      );
   const grandTotal = subtotal + totalGst - globalDiscount;
 
   function handleNewProduct(e: React.FormEvent) {
@@ -268,15 +288,27 @@ export default function POSPage() {
       return;
     }
 
+    // Generate invoice number based on payment type
+    const currentInvoiceNo = isCash
+      ? `CS-${String(invoiceCounter)}-${String(cashCounter).padStart(3, "0")}`
+      : `TBG-${String(invoiceCounter)}-${String(regularCounter).padStart(3, "0")}`;
+
+    if (isCash) {
+      setCashCounter((c) => c + 1);
+    } else {
+      setRegularCounter((c) => c + 1);
+    }
+
     // Snapshot the invoice data before clearing
     setInvoiceSnapshot({
-      invoiceNo,
+      invoiceNo: currentInvoiceNo,
       items: [...items],
       subtotal,
       totalGst,
       globalDiscount,
       grandTotal,
       paymentMethod,
+      isCash,
       date: new Date().toLocaleString("en-IN", {
         dateStyle: "medium",
         timeStyle: "short",
@@ -284,16 +316,18 @@ export default function POSPage() {
     });
     setInvoicePreviewOpen(true);
 
-    // Deduct stock for each item
-    setProducts(
-      products.map((p) => {
-        const invoiceItem = items.find((it) => it.product.id === p.id);
-        if (invoiceItem) {
-          return { ...p, stock: p.stock - invoiceItem.quantity };
-        }
-        return p;
-      })
-    );
+    // Only deduct stock for non-cash sales
+    if (!isCash) {
+      setProducts(
+        products.map((p) => {
+          const invoiceItem = items.find((it) => it.product.id === p.id);
+          if (invoiceItem) {
+            return { ...p, stock: p.stock - invoiceItem.quantity };
+          }
+          return p;
+        })
+      );
+    }
 
     toast.success(
       `Invoice generated! Total: ₹${grandTotal.toLocaleString("en-IN", {
@@ -576,10 +610,12 @@ export default function POSPage() {
                   <TableBody>
                     <AnimatePresence mode="popLayout">
                       {items.map((it) => {
+                        const unitPrice = getUnitPrice(it);
                         const lineSubtotal =
-                          it.product.price * it.quantity - it.discount;
-                        const lineGst =
-                          (lineSubtotal * it.product.gst) / 100;
+                          unitPrice * it.quantity - it.discount;
+                        const lineGst = isCash
+                          ? 0
+                          : (lineSubtotal * it.product.gst) / 100;
                         const lineTotal = lineSubtotal + lineGst;
 
                         return (
@@ -628,9 +664,19 @@ export default function POSPage() {
                                 </Button>
                               </div>
                             </TableCell>
-                            <TableCell className="text-right text-sm">
-                              &#8377;
-                              {it.product.price.toLocaleString("en-IN")}
+                            <TableCell className="text-right">
+                              <Input
+                                type="number"
+                                className="w-20 h-7 text-xs text-right ml-auto"
+                                value={it.overridePrice ?? it.product.price}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value);
+                                  updateItemPrice(
+                                    it.product.id,
+                                    val === it.product.price ? null : val || null
+                                  );
+                                }}
+                              />
                             </TableCell>
                             <TableCell className="text-right">
                               <Input
@@ -647,7 +693,7 @@ export default function POSPage() {
                               />
                             </TableCell>
                             <TableCell className="text-right text-xs text-muted-foreground">
-                              {it.product.gst}%
+                              {isCash ? "—" : `${it.product.gst}%`}
                             </TableCell>
                             <TableCell className="text-right text-sm font-semibold">
                               &#8377;
@@ -691,9 +737,14 @@ export default function POSPage() {
               <div>
                 <p className="font-semibold text-sm">The Biker Genome</p>
                 <p className="text-xs text-muted-foreground">
-                  Invoice #{invoiceNo}
+                  {isCash ? "Cash Sale" : "Regular Invoice"}
                 </p>
               </div>
+              {isCash && (
+                <Badge variant="outline" className="ml-auto text-[10px] border-amber-400 text-amber-600">
+                  No GST &middot; No Trail
+                </Badge>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -714,7 +765,7 @@ export default function POSPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">GST</span>
                 <span>
-                  &#8377;{totalGst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                  {isCash ? "—" : `₹${totalGst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
                 </span>
               </div>
               <div className="flex justify-between text-sm items-center">
@@ -832,8 +883,9 @@ export default function POSPage() {
                   {/* Items */}
                   <div className="space-y-2">
                     {invoiceSnapshot.items.map((it) => {
-                      const lineSubtotal = it.product.price * it.quantity - it.discount;
-                      const lineGst = (lineSubtotal * it.product.gst) / 100;
+                      const unitPrice = it.overridePrice ?? it.product.price;
+                      const lineSubtotal = unitPrice * it.quantity - it.discount;
+                      const lineGst = invoiceSnapshot.isCash ? 0 : (lineSubtotal * it.product.gst) / 100;
                       const lineTotal = lineSubtotal + lineGst;
                       return (
                         <div key={it.product.id}>
@@ -846,8 +898,8 @@ export default function POSPage() {
                             </span>
                           </div>
                           <div className="text-[10px] text-gray-500 flex gap-3">
-                            <span>{it.quantity} x &#8377;{it.product.price.toLocaleString("en-IN")}</span>
-                            <span>GST {it.product.gst}%</span>
+                            <span>{it.quantity} x &#8377;{unitPrice.toLocaleString("en-IN")}</span>
+                            {!invoiceSnapshot.isCash && <span>GST {it.product.gst}%</span>}
                             {it.discount > 0 && <span>Disc -&#8377;{it.discount}</span>}
                           </div>
                         </div>
@@ -863,10 +915,12 @@ export default function POSPage() {
                       <span className="text-gray-600">Subtotal</span>
                       <span>&#8377;{invoiceSnapshot.subtotal.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">GST</span>
-                      <span>&#8377;{invoiceSnapshot.totalGst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
-                    </div>
+                    {!invoiceSnapshot.isCash && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">GST</span>
+                        <span>&#8377;{invoiceSnapshot.totalGst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                      </div>
+                    )}
                     {invoiceSnapshot.globalDiscount > 0 && (
                       <div className="flex justify-between">
                         <span className="text-gray-600">Discount</span>
