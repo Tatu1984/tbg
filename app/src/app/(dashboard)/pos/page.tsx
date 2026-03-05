@@ -1187,15 +1187,12 @@ export default function POSPage() {
 
           {invoiceSnapshot && (
             <>
-              {/* Inline preview rendered via the same HTML */}
-              <div
-                className="border rounded-lg bg-white overflow-auto"
-                style={{ maxHeight: "60vh" }}
-                dangerouslySetInnerHTML={{
-                  __html: generateInvoiceHTML(invoiceSnapshot)
-                    .replace(/<!DOCTYPE html>[\s\S]*?<body>/, "")
-                    .replace(/<\/body>[\s\S]*?<\/html>/, ""),
-                }}
+              {/* Inline preview via iframe for proper CSS isolation */}
+              <iframe
+                className="w-full border rounded-lg bg-white"
+                style={{ height: "60vh" }}
+                srcDoc={generateInvoiceHTML(invoiceSnapshot)}
+                title={`Invoice Preview ${invoiceSnapshot.invoiceNo}`}
               />
 
               <DialogFooter className="gap-2">
