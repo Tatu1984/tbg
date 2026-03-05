@@ -843,16 +843,16 @@ export default function POSPage() {
           </Dialog>
         </div>
 
-        {/* Invoice items table */}
+        {/* Live Invoice Preview */}
         <Card className="flex-1 flex flex-col overflow-hidden">
-          <CardHeader className="pb-3 shrink-0">
+          <CardHeader className="pb-2 shrink-0">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <Receipt className="h-4 w-4" />
-                Invoice Items
+                Invoice Preview
                 {items.length > 0 && (
                   <Badge variant="secondary" className="ml-1">
-                    {items.length}
+                    {items.length} items
                   </Badge>
                 )}
               </CardTitle>
@@ -872,159 +872,213 @@ export default function POSPage() {
             </div>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden p-0">
-            {items.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground py-16">
-                <ShoppingBag className="h-12 w-12 mb-4 opacity-30" />
-                <p className="text-sm font-medium mb-1">No items added</p>
-                <p className="text-xs">
-                  Search products above or add a new item
-                </p>
-              </div>
-            ) : (
-              <ScrollArea className="h-full">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[40%]">Product</TableHead>
-                      <TableHead className="text-center">Qty</TableHead>
-                      <TableHead className="text-right">Price</TableHead>
-                      <TableHead className="text-right">Disc %</TableHead>
-                      <TableHead className="text-right">GST</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="w-10" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <AnimatePresence mode="popLayout">
-                      {items.map((it) => {
-                        const unitPrice = getUnitPrice(it);
-                        const gstRate = getGstRate(it);
-                        const lineSubtotal =
-                          unitPrice * it.quantity - getItemDiscountAmount(it);
-                        const lineGst = isCash
-                          ? 0
-                          : (lineSubtotal * gstRate) / 100;
-                        const lineTotal = lineSubtotal + lineGst;
+            <ScrollArea className="h-full">
+              <div className="border-2 border-foreground/80 mx-3 mb-3 text-[11px]" style={{ fontFamily: "Arial, Helvetica, sans-serif" }}>
+                {/* Invoice Header */}
+                <div className="grid grid-cols-[65%_35%] border-b-2 border-foreground/80">
+                  <div className="border-r-2 border-foreground/80 p-2.5 text-center">
+                    <div className="text-[9px] font-bold tracking-widest mb-0.5">TAX INVOICE</div>
+                    <div className="text-[20px] font-black tracking-wider" style={{ fontFamily: "Impact, Arial, sans-serif" }}>
+                      {storeSettings?.storeName || "THE BIKER GENOME"}
+                    </div>
+                    <div className="text-[10px] mt-0.5">
+                      {storeSettings ? `${storeSettings.address}, ${storeSettings.city} - ${storeSettings.pincode}` : ""}
+                    </div>
+                    <div className="text-[10px]">Phone : {storeSettings?.phones || ""}</div>
+                    <div className="text-[10px]">E-mail : {storeSettings?.email || ""}</div>
+                  </div>
+                  <div className="p-2.5">
+                    <div className="font-bold mb-2">GSTIN : {storeSettings?.gstin || ""}</div>
+                    <div className="flex justify-between text-[10px] py-0.5">
+                      <span>INVOICE NO :</span>
+                      <span className="font-bold text-[12px]">—</span>
+                    </div>
+                    <div className="flex justify-between text-[10px] py-0.5">
+                      <span>INVOICE DATE :</span>
+                      <span className="font-bold">{new Date().toLocaleDateString("en-IN")}</span>
+                    </div>
+                  </div>
+                </div>
 
-                        return (
-                          <motion.tr
-                            key={it.product.id}
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            className="border-b"
-                          >
-                            <TableCell>
-                              <div>
-                                <p className="text-sm font-medium truncate max-w-[200px]">
-                                  {it.product.name}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {it.product.sku}
-                                  {it.product.hsn && <> &middot; HSN: {it.product.hsn}</>}
-                                  {" "}&middot; Stock: {it.product.stock}
-                                </p>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center justify-center gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() =>
-                                    updateQuantity(it.product.id, -1)
-                                  }
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <span className="w-8 text-center text-sm font-semibold">
-                                  {it.quantity}
-                                </span>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-7 w-7"
-                                  onClick={() =>
-                                    updateQuantity(it.product.id, 1)
-                                  }
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
+                {/* Customer Info */}
+                <div className="p-2 border-b border-foreground/80">
+                  <div className="grid grid-cols-[70px_1fr] gap-y-1 text-[10px]">
+                    <span className="font-bold">NAME:</span>
+                    <span className="border-b border-foreground/30 font-bold">{customer.name || "\u00A0"}</span>
+                    <span className="font-bold">ADDRESS:</span>
+                    <span className="border-b border-foreground/30">{customer.address || "\u00A0"}</span>
+                  </div>
+                  <div className="grid grid-cols-6 gap-x-2 mt-1 text-[10px]">
+                    <span className="font-bold">GSTIN NO.</span>
+                    <span className="border-b border-foreground/30">{customer.gstin || "\u00A0"}</span>
+                    <span className="font-bold text-right">STATE CODE:</span>
+                    <span className="border-b border-foreground/30">{customer.stateCode || "\u00A0"}</span>
+                    <span className="font-bold text-right">MOBILE NO:</span>
+                    <span className="border-b border-foreground/30">{customer.phone || "\u00A0"}</span>
+                  </div>
+                </div>
+
+                {/* Items Table */}
+                <table className="w-full text-[10px] border-collapse">
+                  <thead>
+                    <tr className="bg-muted/50">
+                      <th rowSpan={2} className="border border-foreground/80 p-1 w-[28px]">NO</th>
+                      <th rowSpan={2} className="border border-foreground/80 p-1 text-left">DESCRIPTION</th>
+                      <th rowSpan={2} className="border border-foreground/80 p-1 w-[40px]">HSN</th>
+                      <th rowSpan={2} className="border border-foreground/80 p-1 w-[30px]">QTY</th>
+                      <th rowSpan={2} className="border border-foreground/80 p-1 w-[55px] text-right">RATE</th>
+                      <th rowSpan={2} className="border border-foreground/80 p-1 w-[40px] text-right">DISC%</th>
+                      <th rowSpan={2} className="border border-foreground/80 p-1 w-[65px] text-right">TAXABLE</th>
+                      <th colSpan={2} className="border border-foreground/80 p-1 text-center">SGST</th>
+                      <th colSpan={2} className="border border-foreground/80 p-1 text-center">CGST</th>
+                      <th rowSpan={2} className="border border-foreground/80 p-1 w-[65px] text-right">TOTAL</th>
+                      <th rowSpan={2} className="border border-foreground/80 p-1 w-[28px]"></th>
+                    </tr>
+                    <tr className="bg-muted/50">
+                      <th className="border border-foreground/80 p-0.5 w-[28px] text-center">%</th>
+                      <th className="border border-foreground/80 p-0.5 w-[45px] text-right">AMT</th>
+                      <th className="border border-foreground/80 p-0.5 w-[28px] text-center">%</th>
+                      <th className="border border-foreground/80 p-0.5 w-[45px] text-right">AMT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((it, idx) => {
+                      const unitPrice = getUnitPrice(it);
+                      const gstRate = getGstRate(it);
+                      const discAmt = getItemDiscountAmount(it);
+                      const taxableValue = unitPrice * it.quantity - discAmt;
+                      const halfRate = gstRate / 2;
+                      const sgst = isCash ? 0 : taxableValue * halfRate / 100;
+                      const cgst = isCash ? 0 : taxableValue * halfRate / 100;
+                      const total = taxableValue + sgst + cgst;
+
+                      return (
+                        <tr key={it.product.id} className="hover:bg-muted/30 group">
+                          <td className="border border-foreground/80 p-1 text-center">{idx + 1}</td>
+                          <td className="border border-foreground/80 p-1">
+                            <div className="flex items-center gap-1">
+                              <span className="font-bold truncate max-w-[180px]">{it.product.name}</span>
+                            </div>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <Button variant="outline" size="icon" className="h-4 w-4 rounded-sm" onClick={() => updateQuantity(it.product.id, -1)}>
+                                <Minus className="h-2 w-2" />
+                              </Button>
+                              <Button variant="outline" size="icon" className="h-4 w-4 rounded-sm" onClick={() => updateQuantity(it.product.id, 1)}>
+                                <Plus className="h-2 w-2" />
+                              </Button>
                               <Input
                                 type="number"
-                                className="w-20 h-7 text-xs text-right ml-auto"
+                                className="w-14 h-4 text-[9px] text-right px-1 ml-1"
                                 value={it.overridePrice ?? it.product.price}
                                 onChange={(e) => {
                                   const val = Number(e.target.value);
-                                  updateItemPrice(
-                                    it.product.id,
-                                    val === it.product.price ? null : val || null
-                                  );
+                                  updateItemPrice(it.product.id, val === it.product.price ? null : val || null);
                                 }}
                               />
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-0.5">
-                                <Input
-                                  type="number"
-                                  className="w-14 h-7 text-xs text-right"
-                                  value={it.discount || ""}
-                                  placeholder="0"
-                                  onChange={(e) =>
-                                    updateItemDiscount(
-                                      it.product.id,
-                                      Number(e.target.value) || 0
-                                    )
-                                  }
-                                />
-                                <span className="text-[10px] text-muted-foreground">%</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-0.5">
-                                <Input
-                                  type="number"
-                                  className={cn("w-14 h-7 text-xs text-right", isCash && "opacity-50")}
-                                  value={it.overrideGst ?? it.product.gst}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    updateItemGst(
-                                      it.product.id,
-                                      val === it.product.gst ? null : val
-                                    );
-                                  }}
-                                />
-                                <span className="text-[10px] text-muted-foreground">%</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right text-sm font-semibold">
-                              &#8377;
-                              {lineTotal.toLocaleString("en-IN", {
-                                maximumFractionDigits: 0,
-                              })}
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={() => removeItem(it.product.id)}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </TableCell>
-                          </motion.tr>
-                        );
-                      })}
-                    </AnimatePresence>
-                  </TableBody>
-                </Table>
-              </ScrollArea>
-            )}
+                              <Input
+                                type="number"
+                                className="w-10 h-4 text-[9px] text-right px-1"
+                                value={it.discount || ""}
+                                placeholder="0"
+                                onChange={(e) => updateItemDiscount(it.product.id, Number(e.target.value) || 0)}
+                              />
+                              <span className="text-[8px] text-muted-foreground">%</span>
+                            </div>
+                          </td>
+                          <td className="border border-foreground/80 p-1 text-center">{it.product.hsn || ""}</td>
+                          <td className="border border-foreground/80 p-1 text-center font-semibold">{it.quantity}</td>
+                          <td className="border border-foreground/80 p-1 text-right">{unitPrice.toFixed(2)}</td>
+                          <td className="border border-foreground/80 p-1 text-right">{it.discount > 0 ? `${it.discount}%` : "-"}</td>
+                          <td className="border border-foreground/80 p-1 text-right">{taxableValue.toFixed(2)}</td>
+                          <td className="border border-foreground/80 p-1 text-center">{isCash ? "-" : `${halfRate.toFixed(1)}%`}</td>
+                          <td className="border border-foreground/80 p-1 text-right">{isCash ? "-" : sgst.toFixed(2)}</td>
+                          <td className="border border-foreground/80 p-1 text-center">{isCash ? "-" : `${halfRate.toFixed(1)}%`}</td>
+                          <td className="border border-foreground/80 p-1 text-right">{isCash ? "-" : cgst.toFixed(2)}</td>
+                          <td className="border border-foreground/80 p-1 text-right font-bold">{total.toFixed(2)}</td>
+                          <td className="border border-foreground/80 p-1 text-center">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-4 w-4 opacity-0 group-hover:opacity-100 text-destructive"
+                              onClick={() => removeItem(it.product.id)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {/* Empty rows to fill invoice look */}
+                    {Array.from({ length: Math.max(0, 8 - items.length) }).map((_, i) => (
+                      <tr
+                        key={`empty-${i}`}
+                        className="cursor-pointer hover:bg-muted/30"
+                        onClick={() => setSearchOpen(true)}
+                      >
+                        <td className="border border-foreground/80 p-2.5 text-center text-foreground/20">{items.length + i + 1}</td>
+                        <td className="border border-foreground/80 p-2.5 text-foreground/20 text-[9px]">
+                          {i === 0 && items.length === 0 ? "Click to add item or search above..." : "\u00A0"}
+                        </td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                        <td className="border border-foreground/80 p-2.5"></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Totals Row */}
+                <div className="grid grid-cols-[65%_35%] border-t border-foreground/80">
+                  <div className="border-r-2 border-foreground/80 p-2 text-[10px]">
+                    <strong>Amount Chargeable (In Words):</strong><br />
+                    <em>{grandTotal > 0 ? numberToWords(Math.round(grandTotal)) : "—"}</em>
+                  </div>
+                  <div className="p-2 text-right">
+                    {globalDiscount > 0 && (
+                      <div className="text-[10px] mb-1">Discount: -₹{globalDiscount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                    )}
+                    <div className="text-[12px] font-bold">
+                      Net Amount: ₹{Math.round(grandTotal).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="grid grid-cols-3 border-t border-foreground/80 text-[10px]">
+                  <div className="border-r border-foreground/80 p-2">
+                    <strong>Payment:</strong> {paymentMethod.toUpperCase()}
+                    <div className="h-6" />
+                    <div className="border-t border-foreground/30 pt-1 text-[9px]">Receiver&apos;s Signature</div>
+                  </div>
+                  <div className="border-r border-foreground/80 p-2 text-center">
+                    <strong className="underline">RTGS/NEFT TO BE SENT TO</strong>
+                    {storeSettings && (() => {
+                      const bank = storeSettings.bankAccounts.find((b) => b.id === selectedBankId) || getDefaultBank(storeSettings);
+                      return bank ? (
+                        <div className="mt-1 text-[9px]">
+                          {bank.bankName} ({bank.bankBranch})<br />
+                          A/C: {bank.accountNo}
+                          {bank.ifscCode && <><br />IFSC: {bank.ifscCode}</>}
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                  <div className="p-2 text-right">
+                    <div>For: <strong>{storeSettings?.storeName || ""}</strong></div>
+                    <div className="h-6" />
+                    <div className="border-t border-foreground/30 inline-block pt-1 text-[9px]">Authorised Signatory</div>
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
           </CardContent>
         </Card>
       </div>
