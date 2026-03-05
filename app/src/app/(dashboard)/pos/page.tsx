@@ -962,25 +962,21 @@ export default function POSPage() {
                               />
                             </TableCell>
                             <TableCell className="text-right">
-                              {isCash ? (
-                                <span className="text-xs text-muted-foreground">&mdash;</span>
-                              ) : (
-                                <div className="flex items-center justify-end gap-0.5">
-                                  <Input
-                                    type="number"
-                                    className="w-14 h-7 text-xs text-right"
-                                    value={it.overrideGst ?? it.product.gst}
-                                    onChange={(e) => {
-                                      const val = Number(e.target.value);
-                                      updateItemGst(
-                                        it.product.id,
-                                        val === it.product.gst ? null : val
-                                      );
-                                    }}
-                                  />
-                                  <span className="text-[10px] text-muted-foreground">%</span>
-                                </div>
-                              )}
+                              <div className="flex items-center justify-end gap-0.5">
+                                <Input
+                                  type="number"
+                                  className={cn("w-14 h-7 text-xs text-right", isCash && "opacity-50")}
+                                  value={it.overrideGst ?? it.product.gst}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    updateItemGst(
+                                      it.product.id,
+                                      val === it.product.gst ? null : val
+                                    );
+                                  }}
+                                />
+                                <span className="text-[10px] text-muted-foreground">%</span>
+                              </div>
                             </TableCell>
                             <TableCell className="text-right text-sm font-semibold">
                               &#8377;
