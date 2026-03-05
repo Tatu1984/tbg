@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -20,10 +21,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Store, Printer, CreditCard, Bell, FileText, Landmark } from "lucide-react";
+import { Store, Printer, CreditCard, Bell, FileText, Landmark, Plus, Trash2, Star } from "lucide-react";
 import { toast } from "sonner";
 import {
   type StoreSettings,
+  type BankAccount,
   getStoreSettings,
   saveStoreSettings,
 } from "@/config/store-settings";
@@ -226,53 +228,152 @@ export default function SettingsPage() {
 
         {/* ── Bank Details ──────────────────────────────────── */}
         <TabsContent value="bank">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Bank Details</CardTitle>
-              <CardDescription>
-                Bank information printed on invoices for RTGS/NEFT payments
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Bank Name</Label>
-                  <Input
-                    value={settings.bankName}
-                    onChange={(e) => update("bankName", e.target.value)}
-                    placeholder="e.g. AXIS BANK"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Branch</Label>
-                  <Input
-                    value={settings.bankBranch}
-                    onChange={(e) => update("bankBranch", e.target.value)}
-                    placeholder="e.g. Sahid Nagar, Kolkata Branch"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Account Number</Label>
-                  <Input
-                    value={settings.accountNo}
-                    onChange={(e) => update("accountNo", e.target.value)}
-                    placeholder="e.g. 920020000488322"
-                    className="font-mono"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>IFSC Code</Label>
-                  <Input
-                    value={settings.ifscCode}
-                    onChange={(e) => update("ifscCode", e.target.value)}
-                    placeholder="e.g. UTIB0001234"
-                    className="font-mono"
-                  />
-                </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-semibold">Bank Accounts</h3>
+                <p className="text-sm text-muted-foreground">
+                  Bank details printed on invoices. The default account is shown on all invoices.
+                </p>
               </div>
-              <Button onClick={handleSave}>Save Changes</Button>
-            </CardContent>
-          </Card>
+              <Button
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  const newAccount: BankAccount = {
+                    id: `bank-${Date.now()}`,
+                    bankName: "",
+                    bankBranch: "",
+                    accountNo: "",
+                    ifscCode: "",
+                    isDefault: settings.bankAccounts.length === 0,
+                  };
+                  update("bankAccounts", [...settings.bankAccounts, newAccount]);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                Add Account
+              </Button>
+            </div>
+
+            {settings.bankAccounts.length === 0 && (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  <Landmark className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No bank accounts added. Click &quot;Add Account&quot; to get started.</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {settings.bankAccounts.map((bank, index) => (
+              <Card key={bank.id} className={bank.isDefault ? "border-brand" : ""}>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Landmark className="h-4 w-4" />
+                      {bank.bankName || `Account ${index + 1}`}
+                      {bank.isDefault && (
+                        <Badge variant="secondary" className="text-[10px]">Default</Badge>
+                      )}
+                    </CardTitle>
+                    <div className="flex items-center gap-1">
+                      {!bank.isDefault && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 gap-1.5 text-xs"
+                          onClick={() => {
+                            const updated = settings.bankAccounts.map((b) => ({
+                              ...b,
+                              isDefault: b.id === bank.id,
+                            }));
+                            update("bankAccounts", updated);
+                          }}
+                        >
+                          <Star className="h-3.5 w-3.5" />
+                          Set Default
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => {
+                          const updated = settings.bankAccounts.filter((b) => b.id !== bank.id);
+                          if (bank.isDefault && updated.length > 0) {
+                            updated[0].isDefault = true;
+                          }
+                          update("bankAccounts", updated);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Bank Name</Label>
+                      <Input
+                        value={bank.bankName}
+                        onChange={(e) => {
+                          const updated = settings.bankAccounts.map((b) =>
+                            b.id === bank.id ? { ...b, bankName: e.target.value } : b
+                          );
+                          update("bankAccounts", updated);
+                        }}
+                        placeholder="e.g. AXIS BANK"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Branch</Label>
+                      <Input
+                        value={bank.bankBranch}
+                        onChange={(e) => {
+                          const updated = settings.bankAccounts.map((b) =>
+                            b.id === bank.id ? { ...b, bankBranch: e.target.value } : b
+                          );
+                          update("bankAccounts", updated);
+                        }}
+                        placeholder="e.g. Sahid Nagar, Kolkata Branch"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Account Number</Label>
+                      <Input
+                        value={bank.accountNo}
+                        onChange={(e) => {
+                          const updated = settings.bankAccounts.map((b) =>
+                            b.id === bank.id ? { ...b, accountNo: e.target.value } : b
+                          );
+                          update("bankAccounts", updated);
+                        }}
+                        placeholder="e.g. 920020000488322"
+                        className="font-mono"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>IFSC Code</Label>
+                      <Input
+                        value={bank.ifscCode}
+                        onChange={(e) => {
+                          const updated = settings.bankAccounts.map((b) =>
+                            b.id === bank.id ? { ...b, ifscCode: e.target.value } : b
+                          );
+                          update("bankAccounts", updated);
+                        }}
+                        placeholder="e.g. UTIB0001234"
+                        className="font-mono"
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            <Button onClick={handleSave}>Save Changes</Button>
+          </div>
         </TabsContent>
 
         {/* ── Printer ──────────────────────────────────────── */}

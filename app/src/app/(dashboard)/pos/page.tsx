@@ -73,7 +73,9 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   type StoreSettings,
+  type BankAccount,
   getStoreSettings,
+  getDefaultBank,
 } from "@/config/store-settings";
 
 // ── Mock product data (will come from DB) ────────────────────────────────
@@ -118,6 +120,7 @@ interface InvoiceSnapshotType {
   date: string;
   isCash: boolean;
   store: StoreSettings;
+  bank: BankAccount | undefined;
 }
 
 const CATEGORIES = [
@@ -326,9 +329,9 @@ function generateInvoiceHTML(snap: InvoiceSnapshotType): string {
       </td>
       <td style="width:30%;padding:8px 15px;border:1px solid #000;vertical-align:top;text-align:center;font-size:10px">
         <strong style="text-decoration:underline">RTGS/NEFT TO BE SENT TO</strong><br/><br/>
-        Bank Name: ${s.bankName} (${s.bankBranch})<br/>
-        Account No.: ${s.accountNo}
-        ${s.ifscCode ? "<br/>IFSC: " + s.ifscCode : ""}
+        ${snap.bank ? `Bank Name: ${snap.bank.bankName} (${snap.bank.bankBranch})<br/>
+        Account No.: ${snap.bank.accountNo}
+        ${snap.bank.ifscCode ? "<br/>IFSC: " + snap.bank.ifscCode : ""}` : "No bank account configured"}
       </td>
       <td style="width:35%;padding:8px 15px;border:1px solid #000;vertical-align:top;text-align:right;font-size:11px">
         <div>For: <strong>${s.storeName}</strong></div>
@@ -365,8 +368,12 @@ export default function POSPage() {
 
   // Store settings from localStorage
   const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
+  const [selectedBankId, setSelectedBankId] = useState<string>("");
   useEffect(() => {
-    setStoreSettings(getStoreSettings());
+    const s = getStoreSettings();
+    setStoreSettings(s);
+    const defaultBank = getDefaultBank(s);
+    if (defaultBank) setSelectedBankId(defaultBank.id);
   }, []);
 
   // Invoice preview
@@ -569,6 +576,7 @@ export default function POSPage() {
       paymentMethod,
       isCash,
       store: storeSettings,
+      bank: storeSettings.bankAccounts.find((b) => b.id === selectedBankId) || getDefaultBank(storeSettings),
       date: new Date().toLocaleDateString("en-IN"),
     });
     setInvoicePreviewOpen(true);
@@ -1155,6 +1163,28 @@ export default function POSPage() {
                   })}
                 </div>
               </div>
+
+              {/* Bank account selector */}
+              {storeSettings && storeSettings.bankAccounts.length > 1 && (
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-2 block">
+                    Bank Account (for invoice)
+                  </Label>
+                  <Select value={selectedBankId} onValueChange={setSelectedBankId}>
+                    <SelectTrigger className="h-9 text-xs">
+                      <SelectValue placeholder="Select bank" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {storeSettings.bankAccounts.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.bankName} - {b.accountNo.slice(-4).padStart(b.accountNo.length, "*")}
+                          {b.isDefault ? " (Default)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {/* Action buttons */}
               <div className="space-y-2">

@@ -1,3 +1,12 @@
+export interface BankAccount {
+  id: string;
+  bankName: string;
+  bankBranch: string;
+  accountNo: string;
+  ifscCode: string;
+  isDefault: boolean;
+}
+
 export interface StoreSettings {
   // Store basics
   storeName: string;
@@ -11,11 +20,8 @@ export interface StoreSettings {
   gstin: string;
   stateCode: string;
 
-  // Bank details
-  bankName: string;
-  bankBranch: string;
-  accountNo: string;
-  ifscCode: string;
+  // Bank details (multiple accounts)
+  bankAccounts: BankAccount[];
 
   // Invoice
   invoicePrefix: string;
@@ -36,10 +42,16 @@ const DEFAULT_SETTINGS: StoreSettings = {
   gstin: "19AAPFT7973E1ZF",
   stateCode: "19",
 
-  bankName: "AXIS BANK",
-  bankBranch: "Sahid Nagar, Kolkata Branch",
-  accountNo: "920020000488322",
-  ifscCode: "",
+  bankAccounts: [
+    {
+      id: "default",
+      bankName: "AXIS BANK",
+      bankBranch: "Sahid Nagar, Kolkata Branch",
+      accountNo: "920020000488322",
+      ifscCode: "",
+      isDefault: true,
+    },
+  ],
 
   invoicePrefix: "TBG",
   cashInvoicePrefix: "CS",
@@ -54,7 +66,25 @@ export function getStoreSettings(): StoreSettings {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+      const parsed = JSON.parse(stored);
+      // Migrate old single bank fields to bankAccounts array
+      if (!parsed.bankAccounts && parsed.bankName) {
+        parsed.bankAccounts = [
+          {
+            id: "migrated",
+            bankName: parsed.bankName,
+            bankBranch: parsed.bankBranch || "",
+            accountNo: parsed.accountNo || "",
+            ifscCode: parsed.ifscCode || "",
+            isDefault: true,
+          },
+        ];
+        delete parsed.bankName;
+        delete parsed.bankBranch;
+        delete parsed.accountNo;
+        delete parsed.ifscCode;
+      }
+      return { ...DEFAULT_SETTINGS, ...parsed };
     }
   } catch {
     // ignore parse errors
@@ -65,6 +95,10 @@ export function getStoreSettings(): StoreSettings {
 export function saveStoreSettings(settings: StoreSettings): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+export function getDefaultBank(settings: StoreSettings): BankAccount | undefined {
+  return settings.bankAccounts.find((b) => b.isDefault) || settings.bankAccounts[0];
 }
 
 export { DEFAULT_SETTINGS };
