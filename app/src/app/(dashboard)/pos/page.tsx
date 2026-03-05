@@ -973,7 +973,7 @@ export default function POSPage() {
                           <td className="border border-foreground/80 p-0.5">
                             <Input
                               type="number"
-                              className="w-full h-5 text-[10px] text-right px-1 border-0 bg-transparent"
+                              className="w-full h-5 text-[8px] text-right px-1 border-0 bg-transparent"
                               value={it.overridePrice ?? it.product.price}
                               onChange={(e) => {
                                 const val = Number(e.target.value);
@@ -991,9 +991,43 @@ export default function POSPage() {
                             />
                           </td>
                           <td className="border border-foreground/80 p-1 text-right">{taxableValue.toFixed(2)}</td>
-                          <td className="border border-foreground/80 p-1 text-center">{isCash ? "-" : `${halfRate.toFixed(1)}%`}</td>
+                          <td className="border border-foreground/80 p-0.5 text-center">
+                            {isCash ? "-" : (
+                              <select
+                                className="w-full h-5 text-[8px] text-center bg-transparent border-0 outline-none cursor-pointer"
+                                value={gstRate}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value);
+                                  updateItemGst(it.product.id, val === it.product.gst ? null : val);
+                                }}
+                              >
+                                <option value={0}>0%</option>
+                                <option value={5}>2.5%</option>
+                                <option value={12}>6%</option>
+                                <option value={18}>9%</option>
+                                <option value={28}>14%</option>
+                              </select>
+                            )}
+                          </td>
                           <td className="border border-foreground/80 p-1 text-right">{isCash ? "-" : sgst.toFixed(2)}</td>
-                          <td className="border border-foreground/80 p-1 text-center">{isCash ? "-" : `${halfRate.toFixed(1)}%`}</td>
+                          <td className="border border-foreground/80 p-0.5 text-center">
+                            {isCash ? "-" : (
+                              <select
+                                className="w-full h-5 text-[8px] text-center bg-transparent border-0 outline-none cursor-pointer"
+                                value={gstRate}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value);
+                                  updateItemGst(it.product.id, val === it.product.gst ? null : val);
+                                }}
+                              >
+                                <option value={0}>0%</option>
+                                <option value={5}>2.5%</option>
+                                <option value={12}>6%</option>
+                                <option value={18}>9%</option>
+                                <option value={28}>14%</option>
+                              </select>
+                            )}
+                          </td>
                           <td className="border border-foreground/80 p-1 text-right">{isCash ? "-" : cgst.toFixed(2)}</td>
                           <td className="border border-foreground/80 p-1 text-right font-bold">{total.toFixed(2)}</td>
                           <td className="border border-foreground/80 p-1 text-center">
