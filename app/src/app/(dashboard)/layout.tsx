@@ -42,6 +42,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/frontend/hooks/useAuth";
+import { useRouter } from "next/navigation";
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -61,7 +63,14 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { clearAuth } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+
+  function handleSignOut() {
+    clearAuth();
+    router.push("/login");
+  }
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -217,7 +226,7 @@ export default function DashboardLayout({
                 <DropdownMenuItem>Profile</DropdownMenuItem>
                 <DropdownMenuItem>Settings</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive">
+                <DropdownMenuItem className="text-destructive" onClick={handleSignOut}>
                   <LogOut className="h-4 w-4 mr-2" />
                   Sign Out
                 </DropdownMenuItem>

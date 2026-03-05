@@ -170,6 +170,15 @@ const emptyForm: UserFormData = {
   role: "cashier",
 };
 
+// Deep clone helper for permissions
+function clonePermissions(perms: Record<Role, Record<string, boolean>>) {
+  const result: Record<string, Record<string, boolean>> = {};
+  for (const role of Object.keys(perms)) {
+    result[role] = { ...perms[role as Role] };
+  }
+  return result as Record<Role, Record<string, boolean>>;
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>(initialUsers);
   const [addOpen, setAddOpen] = useState(false);
@@ -178,6 +187,8 @@ export default function UsersPage() {
   const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [formData, setFormData] = useState<UserFormData>(emptyForm);
+  const [customPermissions, setCustomPermissions] = useState<Record<Role, Record<string, boolean>>>(() => clonePermissions(rolePermissions));
+  const [editingPermissions, setEditingPermissions] = useState(false);
 
   // --- Add User ---
   function handleOpenAdd() {
@@ -260,10 +271,34 @@ export default function UsersPage() {
     );
   }
 
-  // --- View Permissions ---
+  // --- View / Edit Permissions ---
   function handleOpenPermissions(user: User) {
     setSelectedUser(user);
+    setEditingPermissions(false);
     setPermissionsOpen(true);
+  }
+
+  function handleTogglePermission(role: Role, mod: string) {
+    setCustomPermissions((prev) => ({
+      ...prev,
+      [role]: { ...prev[role], [mod]: !prev[role][mod] },
+    }));
+  }
+
+  function handleSavePermissions() {
+    setEditingPermissions(false);
+    toast.success(`Permissions updated for ${roleLabels[selectedUser!.role]} role.`);
+  }
+
+  function handleCancelEditPermissions() {
+    if (selectedUser) {
+      // Revert changes for this role
+      setCustomPermissions((prev) => ({
+        ...prev,
+        [selectedUser.role]: { ...rolePermissions[selectedUser.role] },
+      }));
+    }
+    setEditingPermissions(false);
   }
 
   return (
@@ -568,15 +603,28 @@ export default function UsersPage() {
 
           {selectedUser && (
             <div className="px-4 pb-6 space-y-4">
-              {/* Role badge */}
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Role:</span>
-                <span
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium capitalize ${roleColors[selectedUser.role]}`}
-                >
-                  <Shield className="h-3 w-3" />
-                  {selectedUser.role.replace("_", " ")}
-                </span>
+              {/* Role badge + edit button */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Role:</span>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium capitalize ${roleColors[selectedUser.role]}`}
+                  >
+                    <Shield className="h-3 w-3" />
+                    {selectedUser.role.replace("_", " ")}
+                  </span>
+                </div>
+                {!editingPermissions && selectedUser.role !== "owner" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 h-8 text-xs"
+                    onClick={() => setEditingPermissions(true)}
+                  >
+                    <Edit className="h-3.5 w-3.5" />
+                    Edit
+                  </Button>
+                )}
               </div>
 
               <Separator />
@@ -594,15 +642,20 @@ export default function UsersPage() {
                     </TableHeader>
                     <TableBody>
                       {permissionModules.map((mod) => {
-                        const hasAccess = rolePermissions[selectedUser.role][mod];
+                        const hasAccess = customPermissions[selectedUser.role][mod];
+                        const isEditable = editingPermissions && selectedUser.role !== "owner";
                         return (
-                          <TableRow key={mod}>
+                          <TableRow
+                            key={mod}
+                            className={isEditable ? "cursor-pointer hover:bg-muted/50" : ""}
+                            onClick={isEditable ? () => handleTogglePermission(selectedUser.role, mod) : undefined}
+                          >
                             <TableCell className="text-sm py-2.5">{mod}</TableCell>
                             <TableCell className="text-center py-2.5">
                               {hasAccess ? (
-                                <Check className="h-4 w-4 text-emerald-600 mx-auto" />
+                                <Check className={`h-4 w-4 mx-auto ${isEditable ? "text-emerald-500" : "text-emerald-600"}`} />
                               ) : (
-                                <X className="h-4 w-4 text-muted-foreground/50 mx-auto" />
+                                <X className={`h-4 w-4 mx-auto ${isEditable ? "text-red-400" : "text-muted-foreground/50"}`} />
                               )}
                             </TableCell>
                           </TableRow>
@@ -613,16 +666,29 @@ export default function UsersPage() {
                 </div>
               </div>
 
+              {editingPermissions && (
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" size="sm" onClick={handleCancelEditPermissions}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleSavePermissions}>
+                    Save Permissions
+                  </Button>
+                </div>
+              )}
+
               <Separator />
 
               <div className="text-xs text-muted-foreground">
                 {selectedUser.role === "owner"
                   ? "Owners have full access to all modules and system settings."
-                  : selectedUser.role === "manager"
-                    ? "Managers can handle day-to-day operations but cannot manage users or system settings."
-                    : selectedUser.role === "cashier"
-                      ? "Cashiers can only access POS billing, non-billed sales, and customer records."
-                      : "Inventory staff can manage products, inventory, suppliers, and purchase orders."}
+                  : editingPermissions
+                    ? "Click on a row to toggle access for the module."
+                    : selectedUser.role === "manager"
+                      ? "Managers can handle day-to-day operations but cannot manage users or system settings."
+                      : selectedUser.role === "cashier"
+                        ? "Cashiers can only access POS billing, non-billed sales, and customer records."
+                        : "Inventory staff can manage products, inventory, suppliers, and purchase orders."}
               </div>
             </div>
           )}

@@ -18,14 +18,25 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Search,
   Warehouse,
   TrendingDown,
   TrendingUp,
   ArrowUpDown,
   Package,
+  Download,
+  Upload,
+  FileSpreadsheet,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useState } from "react";
+import { exportToCSV, downloadTemplate, importFromExcel } from "@/frontend/utils/csv-utils";
 
 const movements = [
   { id: "ST-10012", product: "MT Thunder 3 Helmet", type: "Sale", qty: -1, user: "Cashier", date: "05 Mar, 2:30 PM" },
@@ -47,22 +58,126 @@ const typeColors: Record<string, string> = {
   Adjustment: "bg-gray-500/10 text-gray-700",
 };
 
+interface Movement {
+  id: string;
+  product: string;
+  type: string;
+  qty: number;
+  user: string;
+  date: string;
+}
+
+const csvHeaders: { key: keyof Movement; label: string }[] = [
+  { key: "id", label: "Transaction ID" },
+  { key: "product", label: "Product" },
+  { key: "type", label: "Type" },
+  { key: "qty", label: "Quantity" },
+  { key: "user", label: "User" },
+  { key: "date", label: "Date" },
+];
+
+const sampleMovement: Record<string, unknown> = {
+  id: "ST-10099",
+  product: "Sample Product Name",
+  type: "Purchase",
+  qty: 5,
+  user: "Admin",
+  date: "05 Mar, 10:00 AM",
+};
+
 export default function InventoryPage() {
+  const [allMovements, setAllMovements] = useState<Movement[]>(movements);
   const [search, setSearch] = useState("");
 
-  const filtered = movements.filter(
+  const filtered = allMovements.filter(
     (m) =>
       m.product.toLowerCase().includes(search.toLowerCase()) ||
       m.type.toLowerCase().includes(search.toLowerCase())
   );
 
+  function handleExportCSV() {
+    exportToCSV(filtered, csvHeaders, "inventory-movements");
+    toast.success(`Exported ${filtered.length} movements to CSV.`);
+  }
+
+  function handleDownloadTemplate() {
+    downloadTemplate(csvHeaders, "inventory-movements", sampleMovement);
+    toast.success("Template downloaded.");
+  }
+
+  async function handleImportExcel(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const toNum = (v: string) => Number(v) || 0;
+
+      const imported = await importFromExcel<Movement>(file, [
+        { label: "Transaction ID", key: "id" },
+        { label: "Product", key: "product" },
+        { label: "Type", key: "type" },
+        { label: "Quantity", key: "qty", transform: toNum },
+        { label: "User", key: "user" },
+        { label: "Date", key: "date" },
+      ]);
+
+      const valid = imported.filter((m) => m.product && m.type);
+      if (valid.length === 0) {
+        toast.error("No valid rows found. Ensure Product and Type columns are filled.");
+        return;
+      }
+
+      setAllMovements((prev) => [...valid, ...prev]);
+      toast.success(`Imported ${valid.length} movements.`);
+    } catch {
+      toast.error("Failed to import file. Please check the format.");
+    }
+
+    e.target.value = "";
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
-        <p className="text-sm text-muted-foreground">
-          Track stock movements and manage inventory
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
+          <p className="text-sm text-muted-foreground">
+            Track stock movements and manage inventory
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                Import / Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportCSV}>
+                <Download className="h-4 w-4 mr-2" />
+                Export to CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleDownloadTemplate}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Download Template
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => document.getElementById("inventory-import")?.click()}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Import from Excel / CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <input
+            id="inventory-import"
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleImportExcel}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-4">

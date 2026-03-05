@@ -59,8 +59,12 @@ import {
   AlertTriangle,
   CheckCircle2,
   IndianRupee,
+  Download,
+  Upload,
+  FileSpreadsheet,
 } from "lucide-react";
 import { toast } from "sonner";
+import { exportToCSV, downloadTemplate, importFromExcel } from "@/frontend/utils/csv-utils";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -276,6 +280,100 @@ export default function ProductsPage() {
   const activeFilterCount =
     filterCategories.size + (filterStock !== "all" ? 1 : 0);
 
+  // ── CSV / Excel ─────────────────────────────────────────────────────
+
+  const csvHeaders: { key: keyof Product; label: string }[] = [
+    { key: "sku", label: "SKU" },
+    { key: "name", label: "Name" },
+    { key: "category", label: "Category" },
+    { key: "brand", label: "Brand" },
+    { key: "size", label: "Size" },
+    { key: "color", label: "Color" },
+    { key: "costPrice", label: "Cost Price" },
+    { key: "price", label: "Selling Price" },
+    { key: "mrp", label: "MRP" },
+    { key: "gst", label: "GST %" },
+    { key: "stock", label: "Stock" },
+    { key: "reorderLevel", label: "Reorder Level" },
+    { key: "availableOnline", label: "Available Online" },
+  ];
+
+  const sampleProduct: Record<string, unknown> = {
+    sku: "BG-HEL-099",
+    name: "Sample Helmet - Black L",
+    category: "Helmets",
+    brand: "MT",
+    size: "L",
+    color: "Black",
+    costPrice: 4200,
+    price: 5500,
+    mrp: 6200,
+    gst: 18,
+    stock: 10,
+    reorderLevel: 3,
+    availableOnline: "true",
+  };
+
+  function handleExportCSV() {
+    exportToCSV(filtered, csvHeaders, "products-export");
+    toast.success(`Exported ${filtered.length} products to CSV.`);
+  }
+
+  function handleDownloadTemplate() {
+    downloadTemplate(csvHeaders, "products", sampleProduct);
+    toast.success("Template downloaded.");
+  }
+
+  async function handleImportExcel(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const toNum = (v: string) => Number(v) || 0;
+      const toBool = (v: string) => v.toLowerCase() === "true" || v === "1" || v.toLowerCase() === "yes";
+
+      const imported = await importFromExcel<Omit<Product, "id">>(file, [
+        { label: "SKU", key: "sku" },
+        { label: "Name", key: "name" },
+        { label: "Category", key: "category" },
+        { label: "Brand", key: "brand" },
+        { label: "Size", key: "size" },
+        { label: "Color", key: "color" },
+        { label: "Cost Price", key: "costPrice", transform: toNum },
+        { label: "Selling Price", key: "price", transform: toNum },
+        { label: "MRP", key: "mrp", transform: toNum },
+        { label: "GST %", key: "gst", transform: toNum },
+        { label: "Stock", key: "stock", transform: toNum },
+        { label: "Reorder Level", key: "reorderLevel", transform: toNum },
+        { label: "Available Online", key: "availableOnline", transform: toBool },
+      ]);
+
+      const valid = imported.filter((p) => p.sku && p.name);
+      if (valid.length === 0) {
+        toast.error("No valid rows found. Ensure SKU and Name columns are filled.");
+        return;
+      }
+
+      let maxId = products.length > 0 ? Math.max(...products.map((p) => p.id)) : 0;
+      const newProducts = valid.map((p) => ({
+        ...p,
+        id: ++maxId,
+        category: (p.category || "Helmets") as Category,
+        gst: p.gst || 18,
+        reorderLevel: p.reorderLevel || 3,
+        availableOnline: p.availableOnline ?? true,
+      }));
+
+      setProducts((prev) => [...prev, ...newProducts]);
+      toast.success(`Imported ${newProducts.length} products.`);
+    } catch {
+      toast.error("Failed to import file. Please check the format.");
+    }
+
+    // Reset input so the same file can be re-imported
+    e.target.value = "";
+  }
+
   // ── Form updater ──────────────────────────────────────────────────────
 
   function updateField<K extends keyof Omit<Product, "id">>(
@@ -297,10 +395,43 @@ export default function ProductsPage() {
             Manage your product catalog
           </p>
         </div>
-        <Button className="gap-2" onClick={openAddDialog}>
-          <Plus className="h-4 w-4" />
-          Add Product
-        </Button>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                Import / Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportCSV}>
+                <Download className="h-4 w-4 mr-2" />
+                Export to CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleDownloadTemplate}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Download Template
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => document.getElementById("product-import")?.click()}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Import from Excel / CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <input
+            id="product-import"
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleImportExcel}
+          />
+          <Button className="gap-2" onClick={openAddDialog}>
+            <Plus className="h-4 w-4" />
+            Add Product
+          </Button>
+        </div>
       </div>
 
       {/* Stats row */}
