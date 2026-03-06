@@ -1,8 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/backend/database/client";
 import { hashPassword, verifyPassword } from "@/backend/utils/hash.util";
 import { signToken } from "@/backend/utils/jwt.util";
 import { handleError, AppError } from "@/backend/utils/error-handler.util";
+
+const registerSchema = z.object({
+  action: z.literal("register"),
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  phone: z.string().regex(/^\d{10}$/, "Phone must be 10 digits").optional(),
+});
+
+const loginSchema = z.object({
+  action: z.literal("login").optional(),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
 
 // POST /api/shop/auth - customer login or register
 export async function POST(req: NextRequest) {
@@ -11,13 +26,12 @@ export async function POST(req: NextRequest) {
     const { action } = body;
 
     if (action === "register") {
-      const { name, email, password, phone } = body;
-      if (!name || !email || !password) {
-        throw new AppError("Name, email, and password are required", 400);
+      const parsed = registerSchema.safeParse(body);
+      if (!parsed.success) {
+        return NextResponse.json({ error: parsed.error.issues[0]?.message || "Invalid input" }, { status: 400 });
       }
-      if (password.length < 6) {
-        throw new AppError("Password must be at least 6 characters", 400);
-      }
+
+      const { name, email, password, phone } = parsed.data;
 
       const existing = await prisma.customer.findUnique({ where: { email } });
       if (existing) {
@@ -43,10 +57,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Login
-    const { email, password } = body;
-    if (!email || !password) {
-      throw new AppError("Email and password are required", 400);
+    const parsed = loginSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message || "Invalid input" }, { status: 400 });
     }
+
+    const { email, password } = parsed.data;
 
     const customer = await prisma.customer.findUnique({ where: { email } });
     if (!customer) {

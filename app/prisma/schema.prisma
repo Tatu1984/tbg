@@ -19,6 +19,8 @@ model User {
   invoices          Invoice[]
   stockTransactions StockTransaction[]
   cashSales         CashSale[]
+
+  @@index([role])
 }
 
 model Category {
@@ -31,15 +33,16 @@ model Category {
 model Product {
   id              String   @id @default(cuid())
   sku             String   @unique
+  hsn             String?
   name            String
   categoryId      String
   brand           String?
   size            String?
   color           String?
-  costPrice       Float
-  sellingPrice    Float
-  mrp             Float
-  gstPercentage   Float    @default(18)
+  costPrice       Decimal  @db.Decimal(12, 2)
+  sellingPrice    Decimal  @db.Decimal(12, 2)
+  mrp             Decimal  @db.Decimal(12, 2)
+  gstPercentage   Decimal  @default(18) @db.Decimal(5, 2)
   stock           Int      @default(0)
   reorderLevel    Int      @default(5)
   availableOnline Boolean  @default(false)
@@ -49,12 +52,16 @@ model Product {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  category          Category           @relation(fields: [categoryId], references: [id])
+  category          Category           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   invoiceItems      InvoiceItem[]
   stockTransactions StockTransaction[]
   cashSales         CashSale[]
   cartItems         CartItem[]
   orderItems        OrderItem[]
+
+  @@index([categoryId])
+  @@index([active, stock])
+  @@index([name])
 }
 
 model Supplier {
@@ -74,31 +81,38 @@ model Invoice {
   id            String   @id @default(cuid())
   invoiceNumber String   @unique
   userId        String
-  subtotal      Float
-  gstAmount     Float
-  discount      Float    @default(0)
-  totalAmount   Float
+  subtotal      Decimal  @db.Decimal(12, 2)
+  gstAmount     Decimal  @db.Decimal(12, 2)
+  discount      Decimal  @default(0) @db.Decimal(12, 2)
+  totalAmount   Decimal  @db.Decimal(12, 2)
   paymentMethod String
   paymentDetail String?
   status        String   @default("completed")
   createdAt     DateTime @default(now())
 
-  user  User          @relation(fields: [userId], references: [id])
+  user  User          @relation(fields: [userId], references: [id], onDelete: Restrict)
   items InvoiceItem[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
 }
 
 model InvoiceItem {
-  id         String @id @default(cuid())
+  id         String  @id @default(cuid())
   invoiceId  String
   productId  String
   quantity   Int
-  unitPrice  Float
-  gstAmount  Float
-  discount   Float  @default(0)
-  totalPrice Float
+  unitPrice  Decimal @db.Decimal(12, 2)
+  gstAmount  Decimal @db.Decimal(12, 2)
+  discount   Decimal @default(0) @db.Decimal(12, 2)
+  totalPrice Decimal @db.Decimal(12, 2)
 
-  invoice Invoice @relation(fields: [invoiceId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+  @@index([productId])
 }
 
 model StockTransaction {
@@ -110,8 +124,12 @@ model StockTransaction {
   notes     String?
   createdAt DateTime @default(now())
 
-  product Product @relation(fields: [productId], references: [id])
-  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([productId])
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model CashSale {
@@ -122,30 +140,37 @@ model CashSale {
   notes     String?
   createdAt DateTime @default(now())
 
-  product Product @relation(fields: [productId], references: [id])
-  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([productId])
+  @@index([userId])
 }
 
 model Purchase {
   id         String   @id @default(cuid())
   supplierId String
-  totalCost  Float
+  totalCost  Decimal  @db.Decimal(12, 2)
   notes      String?
   createdAt  DateTime @default(now())
 
-  supplier Supplier       @relation(fields: [supplierId], references: [id])
+  supplier Supplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   items    PurchaseItem[]
+
+  @@index([supplierId])
 }
 
 model PurchaseItem {
-  id         String @id @default(cuid())
+  id         String  @id @default(cuid())
   purchaseId String
   productId  String
   quantity   Int
-  unitCost   Float
-  totalCost  Float
+  unitCost   Decimal @db.Decimal(12, 2)
+  totalCost  Decimal @db.Decimal(12, 2)
 
-  purchase Purchase @relation(fields: [purchaseId], references: [id])
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseId])
 }
 
 model Customer {
@@ -173,8 +198,10 @@ model Address {
   pincode    String
   isDefault  Boolean @default(false)
 
-  customer Customer @relation(fields: [customerId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   orders   Order[]
+
+  @@index([customerId])
 }
 
 model CartItem {
@@ -183,8 +210,8 @@ model CartItem {
   productId  String
   quantity   Int
 
-  customer Customer @relation(fields: [customerId], references: [id])
-  product  Product  @relation(fields: [productId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([customerId, productId])
 }
@@ -194,29 +221,36 @@ model Order {
   orderNumber     String   @unique
   customerId      String
   addressId       String
-  subtotal        Float
-  gstAmount       Float
-  shippingCharge  Float    @default(0)
-  totalAmount     Float
+  subtotal        Decimal  @db.Decimal(12, 2)
+  gstAmount       Decimal  @db.Decimal(12, 2)
+  shippingCharge  Decimal  @default(0) @db.Decimal(12, 2)
+  totalAmount     Decimal  @db.Decimal(12, 2)
   paymentMethod   String
   paymentId       String?
   status          String   @default("confirmed")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  customer Customer    @relation(fields: [customerId], references: [id])
-  address  Address     @relation(fields: [addressId], references: [id])
+  customer Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  address  Address     @relation(fields: [addressId], references: [id], onDelete: Restrict)
   items    OrderItem[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model OrderItem {
-  id         String @id @default(cuid())
+  id         String  @id @default(cuid())
   orderId    String
   productId  String
   quantity   Int
-  unitPrice  Float
-  totalPrice Float
+  unitPrice  Decimal @db.Decimal(12, 2)
+  totalPrice Decimal @db.Decimal(12, 2)
 
-  order   Order   @relation(fields: [orderId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
 }

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const createProductSchema = z.object({
   sku: z.string().min(1),
+  hsn: z.string().optional(),
   name: z.string().min(1),
   categoryId: z.string(),
   brand: z.string().optional(),
@@ -16,4 +17,24 @@ export const createProductSchema = z.object({
   availableOnline: z.boolean().default(false),
   imageUrl: z.string().url().optional(),
   description: z.string().optional(),
+});
+
+export const updateProductSchema = z.object({
+  sku: z.string().min(1).optional(),
+  hsn: z.string().optional(),
+  name: z.string().min(1).optional(),
+  categoryId: z.string().optional(),
+  brand: z.string().optional(),
+  size: z.string().optional(),
+  color: z.string().optional(),
+  costPrice: z.number().positive().optional(),
+  sellingPrice: z.number().positive().optional(),
+  mrp: z.number().positive().optional(),
+  gstPercentage: z.number().min(0).max(100).optional(),
+  stock: z.number().int().min(0).optional(),
+  reorderLevel: z.number().int().min(0).optional(),
+  availableOnline: z.boolean().optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  description: z.string().nullable().optional(),
+  active: z.boolean().optional(),
 });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/backend/database/client";
-import { createProductSchema } from "@/backend/validators/product.validator";
+import { createProductSchema, updateProductSchema } from "@/backend/validators/product.validator";
 import { authenticateRequest } from "@/backend/api/middleware";
 import { handleError, AppError } from "@/backend/utils/error-handler.util";
 
@@ -20,9 +20,9 @@ export async function GET(req: NextRequest) {
 
     if (search) {
       where.OR = [
-        { name: { contains: search } },
-        { sku: { contains: search } },
-        { brand: { contains: search } },
+        { name: { contains: search, mode: "insensitive" } },
+        { sku: { contains: search, mode: "insensitive" } },
+        { brand: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -103,9 +103,14 @@ export async function PUT(req: NextRequest) {
       throw new AppError("Product ID is required", 400);
     }
 
+    const parsed = updateProductSchema.safeParse(updateData);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+    }
+
     const product = await prisma.product.update({
       where: { id },
-      data: updateData,
+      data: parsed.data,
       include: { category: { select: { name: true } } },
     });
 

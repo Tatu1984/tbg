@@ -12,6 +12,8 @@ const supplierSchema = z.object({
   paymentTerms: z.string().optional(),
 });
 
+const updateSupplierSchema = supplierSchema.partial();
+
 export async function GET(req: NextRequest) {
   try {
     const auth = await authenticateRequest(req);
@@ -70,7 +72,12 @@ export async function PUT(req: NextRequest) {
     const { id, ...updateData } = body;
     if (!id) throw new AppError("Supplier ID is required", 400);
 
-    const supplier = await prisma.supplier.update({ where: { id }, data: updateData });
+    const parsed = updateSupplierSchema.safeParse(updateData);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+    }
+
+    const supplier = await prisma.supplier.update({ where: { id }, data: parsed.data });
     return NextResponse.json({ supplier });
   } catch (error) {
     return handleError(error);

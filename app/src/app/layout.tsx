@@ -10,9 +10,31 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "The Biker Genome | Bike Accessories Store",
+  title: {
+    default: "The Biker Genome | Bike Accessories Store",
+    template: "%s | The Biker Genome",
+  },
   description:
-    "Premium bike accessories, helmets, riding gear & more. Shop online or visit our store.",
+    "Premium bike accessories, helmets, riding gear & more. Shop online or visit our store in Kolkata.",
+  keywords: [
+    "bike accessories",
+    "helmets",
+    "riding gear",
+    "motorcycle accessories",
+    "Kolkata",
+  ],
+  openGraph: {
+    title: "The Biker Genome | Bike Accessories Store",
+    description:
+      "Premium bike accessories, helmets, riding gear & more. Shop online or visit our store.",
+    type: "website",
+    locale: "en_IN",
+    siteName: "The Biker Genome",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({

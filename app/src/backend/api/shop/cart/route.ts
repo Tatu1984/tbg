@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/backend/database/client";
 import { authenticateRequest } from "@/backend/api/middleware";
 import { handleError, AppError } from "@/backend/utils/error-handler.util";
+
+const addToCartSchema = z.object({
+  productId: z.string().min(1, "Product ID is required"),
+  quantity: z.number().int().positive("Quantity must be positive"),
+});
 
 async function getCustomerId(req: NextRequest) {
   const auth = await authenticateRequest(req);
@@ -49,10 +55,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { productId, quantity } = await req.json();
-    if (!productId || !quantity || quantity < 1) {
-      throw new AppError("Product ID and quantity are required", 400);
+    const body = await req.json();
+    const parsed = addToCartSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.message }, { status: 400 });
     }
+
+    const { productId, quantity } = parsed.data;
 
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product || !product.active || !product.availableOnline) {

@@ -14,19 +14,24 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const limit = Number(searchParams.get("limit")) || 50;
+    const offset = Number(searchParams.get("offset")) || 0;
 
-    const invoices = await prisma.invoice.findMany({
-      include: {
-        user: { select: { name: true } },
-        items: {
-          include: { product: { select: { name: true, sku: true } } },
+    const [invoices, total] = await Promise.all([
+      prisma.invoice.findMany({
+        include: {
+          user: { select: { name: true } },
+          items: {
+            include: { product: { select: { name: true, sku: true } } },
+          },
         },
-      },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-    });
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.invoice.count(),
+    ]);
 
-    return NextResponse.json({ invoices });
+    return NextResponse.json({ invoices, total });
   } catch (error) {
     return handleError(error);
   }
@@ -67,10 +72,12 @@ export async function POST(req: NextRequest) {
     let totalGst = 0;
     const invoiceItems = items.map((item) => {
       const product = products.find((p) => p.id === item.productId)!;
-      const lineTotal = product.sellingPrice * item.quantity;
+      const price = Number(product.sellingPrice);
+      const gstPct = Number(product.gstPercentage);
+      const lineTotal = price * item.quantity;
       const lineDiscount = item.discount || 0;
       const taxableAmount = lineTotal - lineDiscount;
-      const gst = (taxableAmount * product.gstPercentage) / 100;
+      const gst = (taxableAmount * gstPct) / 100;
 
       subtotal += taxableAmount;
       totalGst += gst;
@@ -78,7 +85,7 @@ export async function POST(req: NextRequest) {
       return {
         productId: item.productId,
         quantity: item.quantity,
-        unitPrice: product.sellingPrice,
+        unitPrice: price,
         gstAmount: gst,
         discount: lineDiscount,
         totalPrice: taxableAmount + gst,
@@ -117,7 +124,6 @@ export async function POST(req: NextRequest) {
           where: { id: item.productId },
           data: { stock: { decrement: item.quantity } },
         });
-        // Record stock transaction
         await tx.stockTransaction.create({
           data: {
             productId: item.productId,

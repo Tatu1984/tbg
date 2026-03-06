@@ -17,7 +17,17 @@ export function handleError(error: unknown) {
     );
   }
 
-  console.error("Unhandled error:", error);
+  // Structured error logging
+  const errorInfo = {
+    message: error instanceof Error ? error.message : "Unknown error",
+    stack:
+      process.env.NODE_ENV === "development" && error instanceof Error
+        ? error.stack
+        : undefined,
+    timestamp: new Date().toISOString(),
+  };
+  console.error("[API Error]", JSON.stringify(errorInfo));
+
   return NextResponse.json(
     { error: "Internal server error" },
     { status: 500 }
