@@ -41,7 +41,7 @@ function CategoryNav() {
   const activeCategory = searchParams.get("category") || "All";
 
   return (
-    <nav className="flex items-center gap-1 -mb-px overflow-x-auto pb-0">
+    <nav aria-label="Product categories" className="flex items-center gap-1 -mb-px overflow-x-auto pb-0">
       {categories.map((cat) => {
         const isActive = cat === activeCategory;
         return (
@@ -94,6 +94,11 @@ export default function ShopLayout({
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      {/* Skip to content */}
+      <a href="#shop-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground">
+        Skip to main content
+      </a>
+
       {/* Top bar */}
       <div className="bg-sidebar text-sidebar-foreground text-xs py-1.5">
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
@@ -109,7 +114,7 @@ export default function ShopLayout({
       </div>
 
       {/* Main nav */}
-      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b">
+      <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b" role="banner">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
@@ -135,11 +140,11 @@ export default function ShopLayout({
 
             {/* Actions */}
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="md:hidden">
+              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Search products">
                 <Search className="h-5 w-5" />
               </Button>
               <Link href="/cart">
-                <Button variant="ghost" size="icon" className="relative">
+                <Button variant="ghost" size="icon" className="relative" aria-label={`Shopping cart${cartCount > 0 ? `, ${cartCount} items` : ""}`}>
                   <ShoppingCart className="h-5 w-5" />
                   {cartCount > 0 && (
                     <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] bg-brand text-brand-foreground">
@@ -150,7 +155,7 @@ export default function ShopLayout({
               </Link>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon">
+                  <Button variant="ghost" size="icon" aria-label="Account menu">
                     <User className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -210,10 +215,10 @@ export default function ShopLayout({
       </header>
 
       {/* Page */}
-      <main className="flex-1">{children}</main>
+      <main id="shop-content" className="flex-1">{children}</main>
 
       {/* Footer */}
-      <footer className="bg-sidebar text-sidebar-foreground">
+      <footer className="bg-sidebar text-sidebar-foreground" role="contentinfo">
         <div className="max-w-7xl mx-auto px-6 py-12">
           <div className="grid md:grid-cols-4 gap-8">
             <div>

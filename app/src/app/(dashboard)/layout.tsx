@@ -105,8 +105,14 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen flex bg-background">
+      {/* Skip to content */}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-background focus:text-foreground">
+        Skip to main content
+      </a>
+
       {/* Sidebar */}
       <aside
+        aria-label="Main navigation"
         className={cn(
           "fixed left-0 top-0 z-40 h-screen flex flex-col border-r bg-sidebar text-sidebar-foreground transition-all duration-300",
           collapsed ? "w-[68px]" : "w-[240px]"
@@ -176,6 +182,7 @@ export default function DashboardLayout({
             variant="ghost"
             size="sm"
             onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             className="w-full justify-center text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
           >
             {collapsed ? (
@@ -202,7 +209,7 @@ export default function DashboardLayout({
           <div className="flex items-center gap-3">
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
+                <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
                   <Bell className="h-5 w-5" />
                   <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-brand" />
                 </Button>
@@ -267,7 +274,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-6">{children}</main>
+        <main id="main-content" className="flex-1 p-6">{children}</main>
       </div>
     </div>
   );

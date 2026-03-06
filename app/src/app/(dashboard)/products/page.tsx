@@ -423,7 +423,7 @@ export default function ProductsPage() {
           <input
             id="product-import"
             type="file"
-            accept=".xlsx,.xls,.csv"
+            accept=".csv"
             className="hidden"
             onChange={handleImportExcel}
           />

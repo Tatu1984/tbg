@@ -173,7 +173,7 @@ export default function InventoryPage() {
           <input
             id="inventory-import"
             type="file"
-            accept=".xlsx,.xls,.csv"
+            accept=".csv"
             className="hidden"
             onChange={handleImportExcel}
           />
