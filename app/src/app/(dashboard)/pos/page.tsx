@@ -363,6 +363,9 @@ export default function POSPage() {
   const [invoiceCounter] = useState(() => Number(String(Date.now()).slice(-4)));
   const [cashCounter, setCashCounter] = useState(1);
   const [regularCounter, setRegularCounter] = useState(1);
+  const [cashGstEnabled, setCashGstEnabled] = useState(false);
+  const [manualInvoiceNo, setManualInvoiceNo] = useState("");
+  const [manualDate, setManualDate] = useState("");
 
   // Customer info
   const [customer, setCustomer] = useState<CustomerInfo>({
@@ -503,6 +506,7 @@ export default function POSPage() {
 
   // Calculations
   const isCash = paymentMethod === "cash";
+  const applyGst = isCash ? cashGstEnabled : true;
 
   function getUnitPrice(it: InvoiceItem) {
     return it.overridePrice ?? it.product.price;
@@ -521,7 +525,7 @@ export default function POSPage() {
     (sum, it) => sum + getUnitPrice(it) * it.quantity - getItemDiscountAmount(it),
     0
   );
-  const totalGst = isCash
+  const totalGst = !applyGst
     ? 0
     : items.reduce(
         (sum, it) =>
@@ -567,15 +571,22 @@ export default function POSPage() {
     }
     if (!storeSettings) return;
 
-    const prefix = isCash ? storeSettings.cashInvoicePrefix : storeSettings.invoicePrefix;
-    const counter = isCash ? cashCounter : regularCounter;
-    const currentInvoiceNo = `${prefix}-${String(invoiceCounter)}-${String(counter).padStart(3, "0")}`;
+    let currentInvoiceNo = manualInvoiceNo.trim();
+    if (!currentInvoiceNo) {
+      const prefix = isCash ? storeSettings.cashInvoicePrefix : storeSettings.invoicePrefix;
+      const counter = isCash ? cashCounter : regularCounter;
+      currentInvoiceNo = `${prefix}-${String(invoiceCounter)}-${String(counter).padStart(3, "0")}`;
+    }
 
     if (isCash) {
       setCashCounter((c) => c + 1);
     } else {
       setRegularCounter((c) => c + 1);
     }
+
+    const invoiceDate = manualDate
+      ? new Date(manualDate).toLocaleDateString("en-IN")
+      : new Date().toLocaleDateString("en-IN");
 
     setInvoiceSnapshot({
       invoiceNo: currentInvoiceNo,
@@ -586,10 +597,10 @@ export default function POSPage() {
       globalDiscount,
       grandTotal,
       paymentMethod,
-      isCash,
+      isCash: !applyGst,
       store: storeSettings,
       bank: storeSettings.bankAccounts.find((b) => b.id === selectedBankId) || getDefaultBank(storeSettings),
-      date: new Date().toLocaleDateString("en-IN"),
+      date: invoiceDate,
     });
     setInvoicePreviewOpen(true);
 
@@ -614,6 +625,8 @@ export default function POSPage() {
     setItems([]);
     setGlobalDiscount(0);
     setCustomer({ name: "", phone: "", address: "", gstin: "", stateCode: "" });
+    setManualInvoiceNo("");
+    setManualDate("");
   }
 
   return (
@@ -1203,7 +1216,7 @@ export default function POSPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">GST</span>
                 <span>
-                  {isCash ? "\u2014" : `\u20B9${totalGst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+                  {!applyGst ? "\u2014" : `\u20B9${totalGst.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
                 </span>
               </div>
               <div className="flex justify-between text-sm items-center">
@@ -1234,6 +1247,33 @@ export default function POSPage() {
             </div>
 
             <div className="space-y-4 mt-6">
+              {/* Invoice Number */}
+              <div>
+                <Label className="text-xs text-muted-foreground mb-2 block">
+                  Invoice Number <span className="text-[10px]">(blank = auto)</span>
+                </Label>
+                <Input
+                  type="text"
+                  className="h-9 text-xs"
+                  value={manualInvoiceNo}
+                  onChange={(e) => setManualInvoiceNo(e.target.value)}
+                  placeholder="Auto-generated"
+                />
+              </div>
+
+              {/* Invoice Date */}
+              <div>
+                <Label className="text-xs text-muted-foreground mb-2 block">
+                  Invoice Date <span className="text-[10px]">(blank = today)</span>
+                </Label>
+                <Input
+                  type="date"
+                  className="h-9 text-xs"
+                  value={manualDate}
+                  onChange={(e) => setManualDate(e.target.value)}
+                />
+              </div>
+
               {/* Payment method */}
               <div>
                 <Label className="text-xs text-muted-foreground mb-2 block">
@@ -1270,6 +1310,33 @@ export default function POSPage() {
                   })}
                 </div>
               </div>
+
+              {/* GST toggle for cash */}
+              {isCash && (
+                <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                  <Label className="text-xs font-medium cursor-pointer" htmlFor="cash-gst-toggle">
+                    Include GST on Cash Bill
+                  </Label>
+                  <button
+                    id="cash-gst-toggle"
+                    type="button"
+                    role="switch"
+                    aria-checked={cashGstEnabled}
+                    onClick={() => setCashGstEnabled(!cashGstEnabled)}
+                    className={cn(
+                      "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                      cashGstEnabled ? "bg-brand" : "bg-muted-foreground/30"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+                        cashGstEnabled ? "translate-x-4" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                </div>
+              )}
 
               {/* Bank account selector */}
               {storeSettings && storeSettings.bankAccounts.length > 1 && (
