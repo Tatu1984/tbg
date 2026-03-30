@@ -184,7 +184,9 @@ export default function ShopLayout({
             </Link>
 
             {/* Search */}
-            <SearchBar />
+            <Suspense fallback={null}>
+              <SearchBar />
+            </Suspense>
 
             {/* Actions */}
             <div className="flex items-center gap-2">
