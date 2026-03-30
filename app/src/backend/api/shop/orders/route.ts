@@ -6,7 +6,7 @@ import { handleError, AppError } from "@/backend/utils/error-handler.util";
 
 const createOrderSchema = z.object({
   addressId: z.string().min(1).optional(),
-  paymentMethod: z.enum(["cod", "upi", "credit_card", "debit_card"]).default("cod"),
+  paymentMethod: z.enum(["cod", "upi", "credit_card", "debit_card", "online"]).default("cod"),
   address: z
     .object({
       label: z.string().default("Home"),

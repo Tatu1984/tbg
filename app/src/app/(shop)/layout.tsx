@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { useState, useEffect, Suspense } from "react";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import { useState, useEffect, Suspense, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,10 +20,66 @@ import {
   LogIn,
   LogOut,
   UserPlus,
+  X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useCustomerStore } from "@/frontend/store/customerStore";
+
+function SearchBar() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("search") || "");
+
+  const handleSearch = useCallback(
+    (value: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (value.trim()) {
+        params.set("search", value.trim());
+      } else {
+        params.delete("search");
+      }
+      params.delete("category");
+      router.push(`/shop?${params.toString()}`);
+    },
+    [router, searchParams]
+  );
+
+  return (
+    <div className="flex-1 max-w-md mx-8 hidden md:block">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSearch(query);
+        }}
+        className="relative"
+      >
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search helmets, jackets, gloves..."
+          className="pl-9 pr-9 bg-muted/50 border-0 focus-visible:ring-1"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSearch(query);
+          }}
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              handleSearch("");
+            }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </form>
+    </div>
+  );
+}
 
 const categories = [
   "All",
@@ -128,21 +184,15 @@ export default function ShopLayout({
             </Link>
 
             {/* Search */}
-            <div className="flex-1 max-w-md mx-8 hidden md:block">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search helmets, jackets, gloves..."
-                  className="pl-9 bg-muted/50 border-0 focus-visible:ring-1"
-                />
-              </div>
-            </div>
+            <SearchBar />
 
             {/* Actions */}
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Search products">
-                <Search className="h-5 w-5" />
-              </Button>
+              <Link href="/shop">
+                <Button variant="ghost" size="icon" className="md:hidden" aria-label="Search products">
+                  <Search className="h-5 w-5" />
+                </Button>
+              </Link>
               <Link href="/cart">
                 <Button variant="ghost" size="icon" className="relative" aria-label={`Shopping cart${cartCount > 0 ? `, ${cartCount} items` : ""}`}>
                   <ShoppingCart className="h-5 w-5" />
