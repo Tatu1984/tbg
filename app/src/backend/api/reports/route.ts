@@ -17,12 +17,10 @@ export async function GET(req: NextRequest) {
           prisma.product.count({ where: { active: true } }),
           prisma.invoice.count(),
           prisma.order.count(),
-          prisma.product.count({
-            where: {
-              active: true,
-              stock: { lte: prisma.product.fields.reorderLevel },
-            },
-          }).catch(() => 0),
+          prisma.$queryRaw<[{ count: bigint }]>`
+            SELECT COUNT(*)::bigint as count FROM "Product"
+            WHERE active = true AND stock <= "reorderLevel"
+          `.then((r) => Number(r[0]?.count ?? 0)).catch(() => 0),
         ]);
 
       const revenueResult = await prisma.invoice.aggregate({

@@ -58,6 +58,7 @@ model Product {
   cashSales         CashSale[]
   cartItems         CartItem[]
   orderItems        OrderItem[]
+  purchaseItems     PurchaseItem[]
 
   @@index([categoryId])
   @@index([active, stock])
@@ -169,8 +170,10 @@ model PurchaseItem {
   totalCost  Decimal @db.Decimal(12, 2)
 
   purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@index([purchaseId])
+  @@index([productId])
 }
 
 model Customer {

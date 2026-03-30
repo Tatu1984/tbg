@@ -277,6 +277,7 @@ function ShopContent() {
               <div className="flex items-center gap-2">
                 <Input
                   type="number"
+                  min="0"
                   placeholder="Min"
                   className="h-9 text-sm"
                   value={priceMin}
@@ -285,6 +286,7 @@ function ShopContent() {
                 <span className="text-muted-foreground text-sm">–</span>
                 <Input
                   type="number"
+                  min="0"
                   placeholder="Max"
                   className="h-9 text-sm"
                   value={priceMax}
