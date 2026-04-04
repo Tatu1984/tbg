@@ -1,6 +1,7 @@
 export type NavKey =
   | "dashboard"
   | "pos"
+  | "invoices"
   | "products"
   | "inventory"
   | "suppliers"
@@ -12,6 +13,7 @@ export type NavKey =
 export const NAV_LABELS: Record<NavKey, string> = {
   dashboard: "Dashboard",
   pos: "POS Billing",
+  invoices: "Invoice History",
   products: "Products",
   inventory: "Inventory",
   suppliers: "Suppliers",
@@ -34,6 +36,7 @@ export const ROLE_LABELS: Record<ConfigurableRole, string> = {
 export const CONFIGURABLE_PAGES: NavKey[] = [
   "dashboard",
   "pos",
+  "invoices",
   "products",
   "inventory",
   "suppliers",
@@ -46,8 +49,8 @@ export const CONFIGURABLE_PAGES: NavKey[] = [
 export type RolePermissions = Record<ConfigurableRole, NavKey[]>;
 
 const DEFAULT_PERMISSIONS: RolePermissions = {
-  manager: ["dashboard", "pos", "products", "inventory", "suppliers", "orders", "reports", "users"],
-  cashier: ["dashboard", "pos"],
+  manager: ["dashboard", "pos", "invoices", "products", "inventory", "suppliers", "orders", "reports", "users"],
+  cashier: ["dashboard", "pos", "invoices"],
   inventory_staff: ["dashboard", "products", "inventory", "suppliers"],
 };
 

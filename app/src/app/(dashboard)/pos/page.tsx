@@ -77,20 +77,20 @@ import {
   getStoreSettings,
   getDefaultBank,
 } from "@/config/store-settings";
+import { useAuth } from "@/frontend/hooks/useAuth";
 
-// ── Mock product data (will come from DB) ────────────────────────────────
-const INITIAL_PRODUCTS = [
-  { id: "1", sku: "BG-HEL-001", hsn: "6506", name: "MT Thunder 3 Helmet - Black M", price: 5500, mrp: 6200, gst: 18, stock: 7, category: "Helmets" },
-  { id: "2", sku: "BG-HEL-002", hsn: "6506", name: "LS2 FF800 Storm Helmet - Blue L", price: 8900, mrp: 9500, gst: 18, stock: 1, category: "Helmets" },
-  { id: "3", sku: "BG-JAK-001", hsn: "6201", name: "Rynox Storm Evo Jacket - L", price: 5990, mrp: 6490, gst: 18, stock: 4, category: "Riding Jackets" },
-  { id: "4", sku: "BG-GLV-001", hsn: "6116", name: "Rynox Air GT Gloves - M", price: 1490, mrp: 1690, gst: 18, stock: 2, category: "Riding Gloves" },
-  { id: "5", sku: "BG-BOT-001", hsn: "6403", name: "Cramster Blaster Boots - 10", price: 2990, mrp: 3490, gst: 18, stock: 5, category: "Riding Boots" },
-  { id: "6", sku: "BG-ACC-001", hsn: "4202", name: "Royal Enfield Saddle Bag", price: 2990, mrp: 3490, gst: 18, stock: 6, category: "Luggage & Bags" },
-  { id: "7", sku: "BG-ACC-002", hsn: "8517", name: "Phone Mount - Quad Lock", price: 3200, mrp: 3500, gst: 18, stock: 8, category: "Bike Accessories" },
-  { id: "8", sku: "BG-PRO-001", hsn: "6307", name: "Knee Guard Pro - Rynox", price: 1890, mrp: 2190, gst: 18, stock: 3, category: "Protection Gear" },
-];
-
-type Product = (typeof INITIAL_PRODUCTS)[number];
+interface Product {
+  id: string;
+  sku: string;
+  hsn: string;
+  name: string;
+  price: number;
+  mrp: number;
+  gst: number;
+  stock: number;
+  category: string;
+  categoryId?: string;
+}
 
 interface InvoiceItem {
   product: Product;
@@ -123,7 +123,7 @@ interface InvoiceSnapshotType {
   bank: BankAccount | undefined;
 }
 
-const CATEGORIES = [
+const FALLBACK_CATEGORIES = [
   "Helmets",
   "Riding Jackets",
   "Riding Gloves",
@@ -354,7 +354,9 @@ function generateInvoiceHTML(snap: InvoiceSnapshotType): string {
 // ── Component ────────────────────────────────────────────────────────────
 
 export default function POSPage() {
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const { token } = useAuth();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [newProductOpen, setNewProductOpen] = useState(false);
@@ -366,6 +368,49 @@ export default function POSPage() {
   const [cashGstEnabled, setCashGstEnabled] = useState(false);
   const [manualInvoiceNo, setManualInvoiceNo] = useState("");
   const [manualDate, setManualDate] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+
+  // Fetch products from API
+  useEffect(() => {
+    if (!token) return;
+    async function loadProducts() {
+      try {
+        const res = await fetch("/api/products", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch products");
+        const data = await res.json();
+        const mapped: Product[] = data.products.map((p: Record<string, unknown>) => ({
+          id: p.id as string,
+          sku: p.sku as string,
+          hsn: (p.hsn as string) || "",
+          name: p.name as string,
+          price: Number(p.sellingPrice),
+          mrp: Number(p.mrp),
+          gst: Number(p.gstPercentage),
+          stock: p.stock as number,
+          category: (p.category as Record<string, string>)?.name || "",
+          categoryId: p.categoryId as string,
+        }));
+        setProducts(mapped);
+
+        // Extract unique categories
+        const cats = data.products
+          .map((p: Record<string, unknown>) => p.category as { id: string; name: string })
+          .filter(Boolean);
+        const unique = Array.from(
+          new Map(cats.map((c: { id: string; name: string }) => [c.id, c])).values()
+        ) as { id: string; name: string }[];
+        setCategories(unique);
+      } catch {
+        toast.error("Failed to load products");
+      } finally {
+        setProductsLoading(false);
+      }
+    }
+    loadProducts();
+  }, [token]);
 
   // Customer info
   const [customer, setCustomer] = useState<CustomerInfo>({
@@ -535,77 +580,150 @@ export default function POSPage() {
       );
   const grandTotal = subtotal + totalGst - globalDiscount;
 
-  function handleNewProduct(e: React.FormEvent) {
+  async function handleNewProduct(e: React.FormEvent) {
     e.preventDefault();
-    const product: Product = {
-      id: `new-${Date.now()}`,
-      sku: newProduct.sku || `BG-NEW-${Date.now().toString(36).toUpperCase()}`,
-      hsn: newProduct.hsn || "",
-      name: newProduct.name,
-      price: Number(newProduct.price),
-      mrp: Number(newProduct.mrp) || Number(newProduct.price),
-      gst: Number(newProduct.gst),
-      stock: Number(newProduct.stock),
-      category: newProduct.category || "Bike Accessories",
-    };
-    setProducts([...products, product]);
-    addItem(product);
-    setNewProductOpen(false);
-    setNewProduct({
-      name: "",
-      sku: "",
-      hsn: "",
-      category: "",
-      price: "",
-      mrp: "",
-      gst: "18",
-      stock: "1",
-    });
-    toast.success(`Product "${product.name}" added to catalog & invoice`);
+    if (!token) return;
+
+    const sku = newProduct.sku || `BG-NEW-${Date.now().toString(36).toUpperCase()}`;
+    const sellingPrice = Number(newProduct.price);
+    const mrpVal = Number(newProduct.mrp) || sellingPrice;
+    const categoryName = newProduct.category || "Bike Accessories";
+    const cat = categories.find((c) => c.name === categoryName);
+
+    try {
+      const res = await fetch("/api/products", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          sku,
+          hsn: newProduct.hsn || undefined,
+          name: newProduct.name,
+          categoryId: cat?.id || categories[0]?.id || "",
+          costPrice: sellingPrice,
+          sellingPrice,
+          mrp: mrpVal,
+          gstPercentage: Number(newProduct.gst),
+          stock: Number(newProduct.stock),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to create product");
+      }
+
+      const data = await res.json();
+      const product: Product = {
+        id: data.product.id,
+        sku: data.product.sku,
+        hsn: data.product.hsn || "",
+        name: data.product.name,
+        price: Number(data.product.sellingPrice),
+        mrp: Number(data.product.mrp),
+        gst: Number(data.product.gstPercentage),
+        stock: data.product.stock,
+        category: categoryName,
+        categoryId: data.product.categoryId,
+      };
+
+      setProducts([...products, product]);
+      addItem(product);
+      setNewProductOpen(false);
+      setNewProduct({
+        name: "",
+        sku: "",
+        hsn: "",
+        category: "",
+        price: "",
+        mrp: "",
+        gst: "18",
+        stock: "1",
+      });
+      toast.success(`Product "${product.name}" saved & added to invoice`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create product");
+    }
   }
 
-  function handleGenerateInvoice() {
+  async function handleGenerateInvoice() {
     if (items.length === 0) {
       toast.error("Add items to the invoice first");
       return;
     }
-    if (!storeSettings) return;
+    if (!storeSettings || !token) return;
 
-    let currentInvoiceNo = manualInvoiceNo.trim();
-    if (!currentInvoiceNo) {
-      const prefix = isCash ? storeSettings.cashInvoicePrefix : storeSettings.invoicePrefix;
-      const counter = isCash ? cashCounter : regularCounter;
-      currentInvoiceNo = `${prefix}-${String(invoiceCounter)}-${String(counter).padStart(3, "0")}`;
-    }
+    setSubmitting(true);
 
-    if (isCash) {
-      setCashCounter((c) => c + 1);
-    } else {
-      setRegularCounter((c) => c + 1);
-    }
+    // Map payment method to API enum
+    const paymentMethodMap: Record<string, string> = {
+      cash: "cash",
+      upi: "upi",
+      card: "credit_card",
+      split: "split",
+    };
+    const apiPaymentMethod = paymentMethodMap[paymentMethod] || "cash";
 
-    const invoiceDate = manualDate
-      ? new Date(manualDate).toLocaleDateString("en-IN")
-      : new Date().toLocaleDateString("en-IN");
+    try {
+      // Save invoice to database
+      const res = await fetch("/api/billing", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          items: items.map((it) => ({
+            productId: it.product.id,
+            quantity: it.quantity,
+            discount: getItemDiscountAmount(it),
+          })),
+          paymentMethod: apiPaymentMethod,
+          paymentDetail: paymentMethod === "upi" ? "UPI" : paymentMethod === "card" ? "Card" : undefined,
+          discount: globalDiscount,
+        }),
+      });
 
-    setInvoiceSnapshot({
-      invoiceNo: currentInvoiceNo,
-      items: [...items],
-      customer: { ...customer },
-      subtotal,
-      totalGst,
-      globalDiscount,
-      grandTotal,
-      paymentMethod,
-      isCash: !applyGst,
-      store: storeSettings,
-      bank: storeSettings.bankAccounts.find((b) => b.id === selectedBankId) || getDefaultBank(storeSettings),
-      date: invoiceDate,
-    });
-    setInvoicePreviewOpen(true);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to create invoice");
+      }
 
-    // Only deduct stock for non-cash sales
-    if (!isCash) {
+      const data = await res.json();
+      const savedInvoice = data.invoice;
+
+      // Use the DB-generated invoice number
+      const currentInvoiceNo = manualInvoiceNo.trim() || savedInvoice.invoiceNumber;
+
+      if (isCash) {
+        setCashCounter((c) => c + 1);
+      } else {
+        setRegularCounter((c) => c + 1);
+      }
+
+      const invoiceDate = manualDate
+        ? new Date(manualDate).toLocaleDateString("en-IN")
+        : new Date().toLocaleDateString("en-IN");
+
+      setInvoiceSnapshot({
+        invoiceNo: currentInvoiceNo,
+        items: [...items],
+        customer: { ...customer },
+        subtotal,
+        totalGst,
+        globalDiscount,
+        grandTotal,
+        paymentMethod,
+        isCash: !applyGst,
+        store: storeSettings,
+        bank: storeSettings.bankAccounts.find((b) => b.id === selectedBankId) || getDefaultBank(storeSettings),
+        date: invoiceDate,
+      });
+      setInvoicePreviewOpen(true);
+
+      // Update local stock counts
       setProducts(
         products.map((p) => {
           const invoiceItem = items.find((it) => it.product.id === p.id);
@@ -615,18 +733,22 @@ export default function POSPage() {
           return p;
         })
       );
-    }
 
-    toast.success(
-      `Invoice generated! Total: ₹${grandTotal.toLocaleString("en-IN", {
-        maximumFractionDigits: 0,
-      })} (${paymentMethod.toUpperCase()})`
-    );
-    setItems([]);
-    setGlobalDiscount(0);
-    setCustomer({ name: "", phone: "", address: "", gstin: "", stateCode: "" });
-    setManualInvoiceNo("");
-    setManualDate("");
+      toast.success(
+        `Invoice ${currentInvoiceNo} saved! Total: \u20B9${grandTotal.toLocaleString("en-IN", {
+          maximumFractionDigits: 0,
+        })} (${paymentMethod.toUpperCase()})`
+      );
+      setItems([]);
+      setGlobalDiscount(0);
+      setCustomer({ name: "", phone: "", address: "", gstin: "", stateCode: "" });
+      setManualInvoiceNo("");
+      setManualDate("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save invoice");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -657,20 +779,22 @@ export default function POSPage() {
                   <CommandEmpty>
                     <div className="py-4 text-center">
                       <p className="text-sm text-muted-foreground mb-3">
-                        No products found.
+                        {productsLoading ? "Loading products..." : "No products found."}
                       </p>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                        onClick={() => {
-                          setSearchOpen(false);
-                          setNewProductOpen(true);
-                        }}
-                      >
-                        <PackagePlus className="h-4 w-4" />
-                        Add New Product
-                      </Button>
+                      {!productsLoading && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-2"
+                          onClick={() => {
+                            setSearchOpen(false);
+                            setNewProductOpen(true);
+                          }}
+                        >
+                          <PackagePlus className="h-4 w-4" />
+                          Add New Product
+                        </Button>
+                      )}
                     </div>
                   </CommandEmpty>
                   <CommandGroup heading="In Stock">
@@ -784,7 +908,7 @@ export default function POSPage() {
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
-                        {CATEGORIES.map((cat) => (
+                        {(categories.length > 0 ? categories.map((c) => c.name) : FALLBACK_CATEGORIES).map((cat) => (
                           <SelectItem key={cat} value={cat}>
                             {cat}
                           </SelectItem>
@@ -1365,10 +1489,19 @@ export default function POSPage() {
                 <Button
                   className="w-full h-12 text-base gap-2 bg-brand hover:bg-brand/90 text-brand-foreground"
                   onClick={handleGenerateInvoice}
-                  disabled={items.length === 0}
+                  disabled={items.length === 0 || submitting}
                 >
-                  <Receipt className="h-5 w-5" />
-                  Generate Invoice
+                  {submitting ? (
+                    <>
+                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Receipt className="h-5 w-5" />
+                      Generate Invoice
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

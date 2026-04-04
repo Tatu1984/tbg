@@ -35,6 +35,7 @@ import {
   Users,
   Settings,
   Receipt,
+  FileText,
   PanelLeftClose,
   PanelLeft,
   LogOut,
@@ -49,6 +50,7 @@ import { getAllowedPages, type NavKey } from "@/config/permissions";
 const navItems: { key: NavKey; href: string; icon: typeof LayoutDashboard; label: string }[] = [
   { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { key: "pos", href: "/pos", icon: Receipt, label: "POS Billing" },
+  { key: "invoices", href: "/invoices", icon: FileText, label: "Invoice History" },
   { key: "products", href: "/products", icon: Package, label: "Products" },
   { key: "inventory", href: "/inventory", icon: Warehouse, label: "Inventory" },
   { key: "suppliers", href: "/suppliers", icon: Truck, label: "Suppliers" },
