@@ -372,16 +372,25 @@ export default function POSPage() {
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
   // Fetch products from API
+  const [hasFetchedProducts, setHasFetchedProducts] = useState(false);
   useEffect(() => {
-    if (!token) return;
+    if (!token || hasFetchedProducts) return;
     async function loadProducts() {
       try {
         const res = await fetch("/api/products", {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok) throw new Error("Failed to fetch products");
+        if (!res.ok) {
+          // Don't toast on auth errors during initial load — token may not be ready yet
+          if (res.status === 401) {
+            setProductsLoading(false);
+            return;
+          }
+          throw new Error("Failed to fetch products");
+        }
         const data = await res.json();
-        const mapped: Product[] = data.products.map((p: Record<string, unknown>) => ({
+        const productList = data.products || [];
+        const mapped: Product[] = productList.map((p: Record<string, unknown>) => ({
           id: p.id as string,
           sku: p.sku as string,
           hsn: (p.hsn as string) || "",
@@ -394,9 +403,10 @@ export default function POSPage() {
           categoryId: p.categoryId as string,
         }));
         setProducts(mapped);
+        setHasFetchedProducts(true);
 
         // Extract unique categories
-        const cats = data.products
+        const cats = productList
           .map((p: Record<string, unknown>) => p.category as { id: string; name: string })
           .filter(Boolean);
         const unique = Array.from(
@@ -404,13 +414,14 @@ export default function POSPage() {
         ) as { id: string; name: string }[];
         setCategories(unique);
       } catch {
+        // Only show error if this wasn't a silent auth failure
         toast.error("Failed to load products");
       } finally {
         setProductsLoading(false);
       }
     }
     loadProducts();
-  }, [token]);
+  }, [token, hasFetchedProducts]);
 
   // Customer info
   const [customer, setCustomer] = useState<CustomerInfo>({
