@@ -78,6 +78,7 @@ import {
   getDefaultBank,
 } from "@/config/store-settings";
 import { useAuth } from "@/frontend/hooks/useAuth";
+import { apiClient } from "@/frontend/api/client";
 
 interface Product {
   id: string;
@@ -377,18 +378,7 @@ export default function POSPage() {
     if (!token || hasFetchedProducts) return;
     async function loadProducts() {
       try {
-        const res = await fetch("/api/products", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          // Don't toast on auth errors during initial load — token may not be ready yet
-          if (res.status === 401) {
-            setProductsLoading(false);
-            return;
-          }
-          throw new Error("Failed to fetch products");
-        }
-        const data = await res.json();
+        const { data } = await apiClient.get("/products");
         const productList = data.products || [];
         const mapped: Product[] = productList.map((p: Record<string, unknown>) => ({
           id: p.id as string,
@@ -602,31 +592,17 @@ export default function POSPage() {
     const cat = categories.find((c) => c.name === categoryName);
 
     try {
-      const res = await fetch("/api/products", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          sku,
-          hsn: newProduct.hsn || undefined,
-          name: newProduct.name,
-          categoryId: cat?.id || categories[0]?.id || "",
-          costPrice: sellingPrice,
-          sellingPrice,
-          mrp: mrpVal,
-          gstPercentage: Number(newProduct.gst),
-          stock: Number(newProduct.stock),
-        }),
+      const { data } = await apiClient.post("/products", {
+        sku,
+        hsn: newProduct.hsn || undefined,
+        name: newProduct.name,
+        categoryId: cat?.id || categories[0]?.id || "",
+        costPrice: sellingPrice,
+        sellingPrice,
+        mrp: mrpVal,
+        gstPercentage: Number(newProduct.gst),
+        stock: Number(newProduct.stock),
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to create product");
-      }
-
-      const data = await res.json();
       const product: Product = {
         id: data.product.id,
         sku: data.product.sku,
@@ -679,31 +655,18 @@ export default function POSPage() {
 
     try {
       // Save invoice to database
-      const res = await fetch("/api/billing", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          items: items.map((it) => ({
-            productId: it.product.id,
-            quantity: it.quantity,
-            discount: getItemDiscountAmount(it),
-          })),
-          paymentMethod: apiPaymentMethod,
-          paymentDetail: paymentMethod === "upi" ? "UPI" : paymentMethod === "card" ? "Card" : undefined,
-          discount: globalDiscount,
-        }),
+      const { data: billingData } = await apiClient.post("/billing", {
+        items: items.map((it) => ({
+          productId: it.product.id,
+          quantity: it.quantity,
+          discount: getItemDiscountAmount(it),
+        })),
+        paymentMethod: apiPaymentMethod,
+        paymentDetail: paymentMethod === "upi" ? "UPI" : paymentMethod === "card" ? "Card" : undefined,
+        discount: globalDiscount,
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to create invoice");
-      }
-
-      const data = await res.json();
-      const savedInvoice = data.invoice;
+      const savedInvoice = billingData.invoice;
 
       // Use the DB-generated invoice number
       const currentInvoiceNo = manualInvoiceNo.trim() || savedInvoice.invoiceNumber;

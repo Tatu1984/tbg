@@ -69,17 +69,20 @@ export default function DashboardLayout({
   const router = useRouter();
   const { user, isAuthenticated, clearAuth, hydrate } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     hydrate();
+    setHydrated(true);
   }, [hydrate]);
 
   useEffect(() => {
-    // Redirect to login if not authenticated (after hydration attempt)
-    if (typeof window !== "undefined" && !localStorage.getItem("token")) {
+    if (!hydrated) return;
+    // Redirect to login if not authenticated after hydration
+    if (!isAuthenticated) {
       router.push("/login");
     }
-  }, [router]);
+  }, [hydrated, isAuthenticated, router]);
 
   const allowedPages = user?.role ? getAllowedPages(user.role) : [];
   const filteredNavItems = navItems.filter((item) => allowedPages.includes(item.key));

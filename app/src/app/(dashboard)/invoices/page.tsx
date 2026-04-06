@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/frontend/hooks/useAuth";
+import { apiClient } from "@/frontend/api/client";
 import { toast } from "sonner";
 
 interface InvoiceItem {
@@ -93,12 +94,9 @@ export default function InvoiceHistoryPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/billing?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!res.ok) throw new Error("Failed to fetch invoices");
-      const data = await res.json();
+      const { data } = await apiClient.get("/billing", {
+        params: { limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+      });
       setInvoices(data.invoices);
       setTotal(data.total);
     } catch {
