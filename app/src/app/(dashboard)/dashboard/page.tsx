@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Card,
@@ -18,62 +19,32 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Receipt,
+  Loader2,
 } from "lucide-react";
+import { useAuth } from "@/frontend/hooks/useAuth";
+import { apiClient } from "@/frontend/api/client";
 
-const stats = [
-  {
-    title: "Today's Sales",
-    value: "12,450",
-    change: "+12%",
-    up: true,
-    icon: IndianRupee,
-    color: "text-emerald-600",
-    bg: "bg-emerald-500/10",
-  },
-  {
-    title: "Invoices",
-    value: "18",
-    change: "+3",
-    up: true,
-    icon: Receipt,
-    color: "text-blue-600",
-    bg: "bg-blue-500/10",
-  },
-  {
-    title: "Low Stock Items",
-    value: "7",
-    change: "+2",
-    up: false,
-    icon: AlertTriangle,
-    color: "text-amber-600",
-    bg: "bg-amber-500/10",
-  },
-  {
-    title: "Online Orders",
-    value: "4",
-    change: "New",
-    up: true,
-    icon: ShoppingCart,
-    color: "text-purple-600",
-    bg: "bg-purple-500/10",
-  },
-];
-
-const topProducts = [
-  { name: "MT Thunder 3 Helmet", sold: 12, revenue: 66000 },
-  { name: "Rynox Storm Evo Jacket", sold: 8, revenue: 47920 },
-  { name: "Rynox Air GT Gloves", sold: 15, revenue: 22350 },
-  { name: "Royal Enfield Saddle Bag", sold: 6, revenue: 17940 },
-  { name: "Cramster Blaster Boots", sold: 5, revenue: 14950 },
-];
-
-const recentInvoices = [
-  { id: "INV-1042", customer: "Walk-in", total: 6200, method: "UPI", time: "2 min ago" },
-  { id: "INV-1041", customer: "Walk-in", total: 12890, method: "Cash", time: "18 min ago" },
-  { id: "INV-1040", customer: "Walk-in", total: 3490, method: "Card", time: "45 min ago" },
-  { id: "INV-1039", customer: "Online", total: 8750, method: "Razorpay", time: "1h ago" },
-  { id: "INV-1038", customer: "Walk-in", total: 1299, method: "Cash", time: "2h ago" },
-];
+interface DashboardData {
+  todaySales: { revenue: number; count: number; revenueChange: number };
+  yesterdaySales: { count: number };
+  totalInvoices: number;
+  onlineOrders: number;
+  recentInvoices: {
+    id: string;
+    invoiceNumber: string;
+    totalAmount: string;
+    paymentMethod: string;
+    createdAt: string;
+    user: { name: string };
+  }[];
+  lowStockProducts: {
+    id: string;
+    name: string;
+    stock: number;
+    reorderLevel: number;
+  }[];
+  topProducts: { name: string; sold: number; revenue: number }[];
+}
 
 const container = {
   hidden: { opacity: 0 },
@@ -84,7 +55,95 @@ const item = {
   show: { opacity: 1, y: 0 },
 };
 
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 export default function DashboardPage() {
+  const { token } = useAuth();
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!token) return;
+    async function load() {
+      try {
+        const { data: d } = await apiClient.get("/dashboard");
+        setData(d);
+      } catch {
+        // apiClient handles 401 redirect
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [token]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="text-center py-20 text-muted-foreground">
+        Failed to load dashboard data.
+      </div>
+    );
+  }
+
+  const invoiceCountChange = data.todaySales.count - data.yesterdaySales.count;
+
+  const stats = [
+    {
+      title: "Today's Sales",
+      value: `\u20B9${data.todaySales.revenue.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
+      change: `${data.todaySales.revenueChange >= 0 ? "+" : ""}${data.todaySales.revenueChange}%`,
+      up: data.todaySales.revenueChange >= 0,
+      icon: IndianRupee,
+      color: "text-emerald-600",
+      bg: "bg-emerald-500/10",
+    },
+    {
+      title: "Today's Invoices",
+      value: String(data.todaySales.count),
+      change: `${invoiceCountChange >= 0 ? "+" : ""}${invoiceCountChange}`,
+      up: invoiceCountChange >= 0,
+      icon: Receipt,
+      color: "text-blue-600",
+      bg: "bg-blue-500/10",
+    },
+    {
+      title: "Low Stock Items",
+      value: String(data.lowStockProducts.length),
+      change: data.lowStockProducts.filter((p) => p.stock === 0).length > 0
+        ? `${data.lowStockProducts.filter((p) => p.stock === 0).length} out`
+        : "OK",
+      up: data.lowStockProducts.length === 0,
+      icon: AlertTriangle,
+      color: "text-amber-600",
+      bg: "bg-amber-500/10",
+    },
+    {
+      title: "Online Orders",
+      value: String(data.onlineOrders),
+      change: "Total",
+      up: true,
+      icon: ShoppingCart,
+      color: "text-purple-600",
+      bg: "bg-purple-500/10",
+    },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Stats */}
@@ -106,9 +165,6 @@ export default function DashboardPage() {
                         {stat.title}
                       </p>
                       <p className="text-3xl font-bold tracking-tight">
-                        {stat.title === "Today's Sales" && (
-                          <span className="text-xl">&#8377;</span>
-                        )}
                         {stat.value}
                       </p>
                     </div>
@@ -153,39 +209,45 @@ export default function DashboardPage() {
                 <CardDescription>Latest billing activity</CardDescription>
               </div>
               <Badge variant="secondary" className="text-xs">
-                Today
+                {data.totalInvoices} total
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {recentInvoices.map((inv) => (
-                <div
-                  key={inv.id}
-                  className="flex items-center justify-between py-2 border-b last:border-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center">
-                      <Receipt className="h-4 w-4 text-muted-foreground" />
+            {data.recentInvoices.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No invoices yet. Create one from POS.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {data.recentInvoices.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center justify-between py-2 border-b last:border-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center">
+                        <Receipt className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{inv.invoiceNumber}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {inv.user.name} &middot; {timeAgo(inv.createdAt)}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">{inv.id}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {inv.customer} &middot; {inv.time}
+                    <div className="text-right">
+                      <p className="text-sm font-semibold">
+                        {"\u20B9"}{Number(inv.totalAmount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
                       </p>
+                      <Badge variant="outline" className="text-[10px] font-normal capitalize">
+                        {inv.paymentMethod.replace("_", " ")}
+                      </Badge>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold">
-                      &#8377;{inv.total.toLocaleString("en-IN")}
-                    </p>
-                    <Badge variant="outline" className="text-[10px] font-normal">
-                      {inv.method}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -195,37 +257,43 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-base">Top Products</CardTitle>
-                <CardDescription>Best sellers this month</CardDescription>
+                <CardDescription>Best sellers by revenue</CardDescription>
               </div>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {topProducts.map((prod, i) => (
-                <div
-                  key={prod.name}
-                  className="flex items-center justify-between py-2 border-b last:border-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground font-mono w-5">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <div>
-                      <p className="text-sm font-medium truncate max-w-[160px]">
-                        {prod.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {prod.sold} sold
-                      </p>
+            {data.topProducts.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No sales data yet.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {data.topProducts.map((prod, i) => (
+                  <div
+                    key={prod.name}
+                    className="flex items-center justify-between py-2 border-b last:border-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground font-mono w-5">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium truncate max-w-[160px]">
+                          {prod.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {prod.sold} sold
+                        </p>
+                      </div>
                     </div>
+                    <p className="text-sm font-semibold text-emerald-600">
+                      {"\u20B9"}{prod.revenue.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    </p>
                   </div>
-                  <p className="text-sm font-semibold text-emerald-600">
-                    &#8377;{prod.revenue.toLocaleString("en-IN")}
-                  </p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -239,33 +307,34 @@ export default function DashboardPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { name: "Rynox Air GT Gloves", stock: 2, threshold: 5 },
-              { name: "LS2 FF800 Helmet", stock: 1, threshold: 3 },
-              { name: "Cramster Tank Bag", stock: 3, threshold: 5 },
-              { name: "AGV K3 SV Helmet", stock: 0, threshold: 3 },
-            ].map((p) => (
-              <div
-                key={p.name}
-                className="rounded-lg border p-3 bg-amber-500/5 border-amber-500/20"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <Package className="h-4 w-4 text-amber-600" />
-                  <Badge
-                    variant={p.stock === 0 ? "destructive" : "outline"}
-                    className="text-[10px]"
-                  >
-                    {p.stock === 0 ? "Out of stock" : `${p.stock} left`}
-                  </Badge>
+          {data.lowStockProducts.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              All products are well-stocked.
+            </p>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {data.lowStockProducts.map((p) => (
+                <div
+                  key={p.id}
+                  className="rounded-lg border p-3 bg-amber-500/5 border-amber-500/20"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <Package className="h-4 w-4 text-amber-600" />
+                    <Badge
+                      variant={p.stock === 0 ? "destructive" : "outline"}
+                      className="text-[10px]"
+                    >
+                      {p.stock === 0 ? "Out of stock" : `${p.stock} left`}
+                    </Badge>
+                  </div>
+                  <p className="text-sm font-medium truncate">{p.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Reorder level: {p.reorderLevel}
+                  </p>
                 </div>
-                <p className="text-sm font-medium truncate">{p.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  Reorder level: {p.threshold}
-                </p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
