@@ -30,6 +30,12 @@ model Category {
   products  Product[]
 }
 
+model Setting {
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
 model Product {
   id              String   @id @default(cuid())
   sku             String   @unique

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -16,29 +17,120 @@ import {
   BarChart3,
   PieChart,
   Calendar,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
+import { apiClient } from "@/frontend/api/client";
 
-const salesData = [
-  { day: "Mon", amount: 12450 },
-  { day: "Tue", amount: 18200 },
-  { day: "Wed", amount: 9800 },
-  { day: "Thu", amount: 22100 },
-  { day: "Fri", amount: 15600 },
-  { day: "Sat", amount: 28900 },
-  { day: "Sun", amount: 8700 },
-];
-const maxSale = Math.max(...salesData.map((d) => d.amount));
+interface SalesReport {
+  weekly: { day: string; amount: number }[];
+  kpis: {
+    weekTotal: number;
+    monthTotal: number;
+    monthChange: number;
+    avgBill: number;
+    avgBillChange: number;
+    totalInvoices: number;
+    countChange: number;
+  };
+}
 
-const categoryBreakdown = [
-  { name: "Helmets", revenue: 142000, percentage: 35, color: "bg-blue-500" },
-  { name: "Riding Jackets", revenue: 89000, percentage: 22, color: "bg-emerald-500" },
-  { name: "Accessories", revenue: 65000, percentage: 16, color: "bg-purple-500" },
-  { name: "Gloves", revenue: 48000, percentage: 12, color: "bg-amber-500" },
-  { name: "Boots", revenue: 36000, percentage: 9, color: "bg-red-500" },
-  { name: "Others", revenue: 24000, percentage: 6, color: "bg-gray-400" },
+interface CategoryReport {
+  breakdown: { name: string; revenue: number; percentage: number }[];
+  total: number;
+}
+
+interface InventoryReport {
+  totalProducts: number;
+  totalStockValue: number;
+  lowOrOutOfStock: number;
+}
+
+interface ProfitReport {
+  grossRevenue: number;
+  totalCost: number;
+  netProfit: number;
+  margin: number;
+}
+
+const CATEGORY_COLORS = [
+  "bg-blue-500",
+  "bg-emerald-500",
+  "bg-purple-500",
+  "bg-amber-500",
+  "bg-red-500",
+  "bg-pink-500",
+  "bg-cyan-500",
+  "bg-gray-400",
 ];
+
+function fmt(n: number): string {
+  return Math.round(n).toLocaleString("en-IN");
+}
+
+function fmtChange(n: number): string {
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}${n.toFixed(1)}%`;
+}
 
 export default function ReportsPage() {
+  const [loading, setLoading] = useState(true);
+  const [sales, setSales] = useState<SalesReport | null>(null);
+  const [category, setCategory] = useState<CategoryReport | null>(null);
+  const [inventory, setInventory] = useState<InventoryReport | null>(null);
+  const [profit, setProfit] = useState<ProfitReport | null>(null);
+
+  useEffect(() => {
+    async function loadAll() {
+      setLoading(true);
+      try {
+        const [s, c, i, p] = await Promise.all([
+          apiClient.get<SalesReport>("/reports", { params: { type: "sales" } }),
+          apiClient.get<CategoryReport>("/reports", {
+            params: { type: "category-breakdown" },
+          }),
+          apiClient.get<InventoryReport>("/reports", {
+            params: { type: "inventory" },
+          }),
+          apiClient.get<ProfitReport>("/reports", { params: { type: "profit" } }),
+        ]);
+        setSales(s.data);
+        setCategory(c.data);
+        setInventory(i.data);
+        setProfit(p.data);
+      } catch {
+        toast.error("Failed to load reports");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadAll();
+  }, []);
+
+  const maxSale =
+    sales && sales.weekly.length > 0
+      ? Math.max(...sales.weekly.map((d) => d.amount), 1)
+      : 1;
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
+          <p className="text-sm text-muted-foreground">
+            Sales analytics, inventory insights & profit analysis
+          </p>
+        </div>
+        <Card>
+          <CardContent className="py-16 text-center text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin inline mr-2" />
+            Loading reports...
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -68,31 +160,56 @@ export default function ReportsPage() {
           {/* KPI cards */}
           <div className="grid grid-cols-4 gap-4">
             {[
-              { label: "This Week", value: "1,15,750", change: "+18%", up: true },
-              { label: "This Month", value: "4,04,000", change: "+12%", up: true },
-              { label: "Avg. Bill Value", value: "3,480", change: "+5%", up: true },
-              { label: "Total Invoices", value: "116", change: "-3%", up: false },
+              {
+                label: "This Week",
+                value: fmt(sales?.kpis.weekTotal ?? 0),
+                change: "",
+                up: true,
+              },
+              {
+                label: "This Month",
+                value: fmt(sales?.kpis.monthTotal ?? 0),
+                change: fmtChange(sales?.kpis.monthChange ?? 0),
+                up: (sales?.kpis.monthChange ?? 0) >= 0,
+              },
+              {
+                label: "Avg. Bill Value",
+                value: fmt(sales?.kpis.avgBill ?? 0),
+                change: fmtChange(sales?.kpis.avgBillChange ?? 0),
+                up: (sales?.kpis.avgBillChange ?? 0) >= 0,
+              },
+              {
+                label: "Total Invoices",
+                value: String(sales?.kpis.totalInvoices ?? 0),
+                change: fmtChange(sales?.kpis.countChange ?? 0),
+                up: (sales?.kpis.countChange ?? 0) >= 0,
+              },
             ].map((kpi) => (
               <Card key={kpi.label}>
                 <CardContent className="pt-5 pb-4">
                   <p className="text-xs text-muted-foreground mb-1">
                     {kpi.label}
                   </p>
-                  <p className="text-2xl font-bold">&#8377;{kpi.value}</p>
-                  <div className="flex items-center gap-1 mt-1">
-                    {kpi.up ? (
-                      <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
-                    ) : (
-                      <TrendingDown className="h-3.5 w-3.5 text-red-500" />
-                    )}
-                    <span
-                      className={`text-xs font-medium ${
-                        kpi.up ? "text-emerald-600" : "text-red-500"
-                      }`}
-                    >
-                      {kpi.change}
-                    </span>
-                  </div>
+                  <p className="text-2xl font-bold">
+                    {kpi.label === "Total Invoices" ? "" : "₹"}
+                    {kpi.value}
+                  </p>
+                  {kpi.change && (
+                    <div className="flex items-center gap-1 mt-1">
+                      {kpi.up ? (
+                        <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
+                      ) : (
+                        <TrendingDown className="h-3.5 w-3.5 text-red-500" />
+                      )}
+                      <span
+                        className={`text-xs font-medium ${
+                          kpi.up ? "text-emerald-600" : "text-red-500"
+                        }`}
+                      >
+                        {kpi.change}
+                      </span>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -106,21 +223,24 @@ export default function ReportsPage() {
                   <CardTitle className="text-base">Weekly Sales</CardTitle>
                   <Badge variant="outline" className="gap-1 text-xs">
                     <Calendar className="h-3 w-3" />
-                    This Week
+                    Last 7 Days
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="flex items-end gap-3 h-48">
-                  {salesData.map((d) => (
-                    <div key={d.day} className="flex-1 flex flex-col items-center gap-2">
+                  {(sales?.weekly ?? []).map((d, idx) => (
+                    <div
+                      key={idx}
+                      className="flex-1 flex flex-col items-center gap-2"
+                    >
                       <span className="text-[10px] text-muted-foreground">
-                        &#8377;{(d.amount / 1000).toFixed(1)}k
+                        ₹{(d.amount / 1000).toFixed(1)}k
                       </span>
                       <div
                         className="w-full rounded-t-md bg-primary/80 hover:bg-primary transition-colors"
                         style={{
-                          height: `${(d.amount / maxSale) * 140}px`,
+                          height: `${Math.max((d.amount / maxSale) * 140, 2)}px`,
                         }}
                       />
                       <span className="text-xs font-medium text-muted-foreground">
@@ -138,22 +258,28 @@ export default function ReportsPage() {
                 <CardDescription>Revenue breakdown</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {categoryBreakdown.map((cat) => (
-                  <div key={cat.name}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium">{cat.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {cat.percentage}%
-                      </span>
+                {(category?.breakdown ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No sales yet.</p>
+                ) : (
+                  (category?.breakdown ?? []).map((cat, idx) => (
+                    <div key={cat.name}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium">{cat.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {cat.percentage}%
+                        </span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            CATEGORY_COLORS[idx % CATEGORY_COLORS.length]
+                          }`}
+                          style={{ width: `${cat.percentage}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${cat.color}`}
-                        style={{ width: `${cat.percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </CardContent>
             </Card>
           </div>
@@ -167,9 +293,18 @@ export default function ReportsPage() {
             <CardContent>
               <div className="grid grid-cols-3 gap-8">
                 {[
-                  { label: "Total Products", value: "48" },
-                  { label: "Total Stock Value", value: "₹12,45,000" },
-                  { label: "Low/Out of Stock", value: "7" },
+                  {
+                    label: "Total Products",
+                    value: String(inventory?.totalProducts ?? 0),
+                  },
+                  {
+                    label: "Total Stock Value",
+                    value: `₹${fmt(inventory?.totalStockValue ?? 0)}`,
+                  },
+                  {
+                    label: "Low/Out of Stock",
+                    value: String(inventory?.lowOrOutOfStock ?? 0),
+                  },
                 ].map((s) => (
                   <div key={s.label} className="text-center">
                     <p className="text-3xl font-bold">{s.value}</p>
@@ -187,13 +322,25 @@ export default function ReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Profit Overview</CardTitle>
+              <CardDescription>
+                Margin: {(profit?.margin ?? 0).toFixed(1)}%
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-8">
                 {[
-                  { label: "Gross Revenue", value: "₹4,04,000" },
-                  { label: "Total Cost", value: "₹2,82,800" },
-                  { label: "Net Profit", value: "₹1,21,200" },
+                  {
+                    label: "Gross Revenue",
+                    value: `₹${fmt(profit?.grossRevenue ?? 0)}`,
+                  },
+                  {
+                    label: "Total Cost",
+                    value: `₹${fmt(profit?.totalCost ?? 0)}`,
+                  },
+                  {
+                    label: "Net Profit",
+                    value: `₹${fmt(profit?.netProfit ?? 0)}`,
+                  },
                 ].map((s) => (
                   <div key={s.label} className="text-center">
                     <p className="text-3xl font-bold">{s.value}</p>

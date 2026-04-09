@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,145 +47,34 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Search, MoreHorizontal, Eye, Truck, XCircle } from "lucide-react";
+import { Search, MoreHorizontal, Eye, Truck, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { apiClient } from "@/frontend/api/client";
 
 type OrderItem = {
-  name: string;
-  qty: number;
-  price: number;
+  id: string;
+  productId: string;
+  quantity: number;
+  unitPrice: string | number;
+  totalPrice: string | number;
+  product: { name: string; sku: string };
 };
 
 type Order = {
   id: string;
-  customer: string;
-  items: OrderItem[];
-  total: number;
+  orderNumber: string;
+  customerId: string;
+  subtotal: string | number;
+  gstAmount: string | number;
+  shippingCharge: string | number;
+  totalAmount: string | number;
+  paymentMethod: string;
+  paymentId: string | null;
   status: string;
-  date: string;
-  method: string;
+  createdAt: string;
+  customer: { name: string; email: string };
+  items: OrderItem[];
 };
-
-const initialOrders: Order[] = [
-  {
-    id: "ORD-2041",
-    customer: "Rahul Sharma",
-    items: [
-      { name: "Basmati Rice (5kg)", qty: 2, price: 4500 },
-      { name: "Toor Dal (1kg)", qty: 3, price: 690 },
-      { name: "Mustard Oil (1L)", qty: 1, price: 3200 },
-    ],
-    total: 17890,
-    status: "confirmed",
-    date: "05 Mar 2026",
-    method: "Razorpay",
-  },
-  {
-    id: "ORD-2040",
-    customer: "Priya Menon",
-    items: [{ name: "Organic Honey (500g)", qty: 1, price: 5500 }],
-    total: 5500,
-    status: "shipped",
-    date: "04 Mar 2026",
-    method: "UPI",
-  },
-  {
-    id: "ORD-2039",
-    customer: "Amit Patel",
-    items: [
-      { name: "Almonds (250g)", qty: 2, price: 3240 },
-      { name: "Cashews (250g)", qty: 1, price: 2000 },
-    ],
-    total: 8480,
-    status: "delivered",
-    date: "03 Mar 2026",
-    method: "Card",
-  },
-  {
-    id: "ORD-2038",
-    customer: "Sneha Reddy",
-    items: [{ name: "Green Tea (100 bags)", qty: 1, price: 2990 }],
-    total: 2990,
-    status: "cancelled",
-    date: "02 Mar 2026",
-    method: "UPI",
-  },
-  {
-    id: "ORD-2037",
-    customer: "Vikram Singh",
-    items: [
-      { name: "Saffron (1g)", qty: 2, price: 6400 },
-      { name: "Cardamom (100g)", qty: 1, price: 4870 },
-      { name: "Cinnamon Sticks (200g)", qty: 3, price: 2100 },
-      { name: "Black Pepper (250g)", qty: 1, price: 4000 },
-    ],
-    total: 23670,
-    status: "delivered",
-    date: "01 Mar 2026",
-    method: "Razorpay",
-  },
-  {
-    id: "ORD-2036",
-    customer: "Ananya Gupta",
-    items: [
-      { name: "Ghee (1L)", qty: 1, price: 6500 },
-      { name: "Jaggery (500g)", qty: 2, price: 1100 },
-    ],
-    total: 8700,
-    status: "processing",
-    date: "28 Feb 2026",
-    method: "Card",
-  },
-  {
-    id: "ORD-2035",
-    customer: "Rajesh Kumar",
-    items: [
-      { name: "Turmeric Powder (500g)", qty: 3, price: 900 },
-      { name: "Red Chilli Powder (500g)", qty: 2, price: 750 },
-      { name: "Coriander Powder (500g)", qty: 2, price: 600 },
-    ],
-    total: 5800,
-    status: "confirmed",
-    date: "27 Feb 2026",
-    method: "UPI",
-  },
-  {
-    id: "ORD-2034",
-    customer: "Deepika Nair",
-    items: [
-      { name: "Coconut Oil (1L)", qty: 2, price: 2400 },
-      { name: "Curry Leaves (dried, 100g)", qty: 1, price: 350 },
-    ],
-    total: 5150,
-    status: "shipped",
-    date: "26 Feb 2026",
-    method: "Razorpay",
-  },
-  {
-    id: "ORD-2033",
-    customer: "Suresh Iyer",
-    items: [
-      { name: "Peanut Butter (500g)", qty: 1, price: 4200 },
-    ],
-    total: 4200,
-    status: "delivered",
-    date: "25 Feb 2026",
-    method: "Card",
-  },
-  {
-    id: "ORD-2032",
-    customer: "Kavitha Rao",
-    items: [
-      { name: "Quinoa (1kg)", qty: 1, price: 3600 },
-      { name: "Chia Seeds (250g)", qty: 2, price: 1800 },
-      { name: "Flax Seeds (500g)", qty: 1, price: 1200 },
-    ],
-    total: 8400,
-    status: "processing",
-    date: "24 Feb 2026",
-    method: "UPI",
-  },
-];
 
 const statusColors: Record<string, string> = {
   confirmed: "bg-blue-500/10 text-blue-700 border-blue-200",
@@ -197,9 +86,22 @@ const statusColors: Record<string, string> = {
 
 const statusOptions = ["confirmed", "processing", "shipped", "delivered"];
 
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function fmtMoney(v: string | number): string {
+  return Number(v).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
 export default function OrdersPage() {
   const [search, setSearch] = useState("");
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // View sheet state
   const [viewOrder, setViewOrder] = useState<Order | null>(null);
@@ -209,15 +111,34 @@ export default function OrdersPage() {
   const [statusOrder, setStatusOrder] = useState<Order | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   const [newStatus, setNewStatus] = useState("");
+  const [updating, setUpdating] = useState(false);
 
   // Cancel dialog state
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
 
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await apiClient.get<{ orders: Order[] }>("/orders", {
+        params: { limit: 100 },
+      });
+      setOrders(data.orders);
+    } catch {
+      toast.error("Failed to load orders");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
+
   const filteredOrders = orders.filter(
     (o) =>
-      o.id.toLowerCase().includes(search.toLowerCase()) ||
-      o.customer.toLowerCase().includes(search.toLowerCase()) ||
+      o.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
+      o.customer.name.toLowerCase().includes(search.toLowerCase()) ||
       o.status.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -232,18 +153,30 @@ export default function OrdersPage() {
     setStatusOpen(true);
   }
 
-  function handleUpdateStatusConfirm() {
+  async function handleUpdateStatusConfirm() {
     if (!statusOrder || !newStatus) return;
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === statusOrder.id ? { ...o, status: newStatus } : o
-      )
-    );
-    toast.success(`Status updated`, {
-      description: `${statusOrder.id} is now "${newStatus}"`,
-    });
-    setStatusOpen(false);
-    setStatusOrder(null);
+    setUpdating(true);
+    try {
+      const { data } = await apiClient.put<{ order: Order }>("/orders", {
+        id: statusOrder.id,
+        status: newStatus,
+      });
+      setOrders((prev) =>
+        prev.map((o) => (o.id === statusOrder.id ? data.order : o))
+      );
+      toast.success("Status updated", {
+        description: `${statusOrder.orderNumber} is now "${newStatus}"`,
+      });
+      setStatusOpen(false);
+      setStatusOrder(null);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || "Failed to update status";
+      toast.error(msg);
+    } finally {
+      setUpdating(false);
+    }
   }
 
   function handleCancelOpen(order: Order) {
@@ -251,18 +184,27 @@ export default function OrdersPage() {
     setCancelOpen(true);
   }
 
-  function handleCancelConfirm() {
+  async function handleCancelConfirm() {
     if (!cancelOrder) return;
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === cancelOrder.id ? { ...o, status: "cancelled" } : o
-      )
-    );
-    toast.success(`Order cancelled`, {
-      description: `${cancelOrder.id} has been cancelled. The customer will be notified.`,
-    });
-    setCancelOpen(false);
-    setCancelOrder(null);
+    try {
+      const { data } = await apiClient.put<{ order: Order }>("/orders", {
+        id: cancelOrder.id,
+        status: "cancelled",
+      });
+      setOrders((prev) =>
+        prev.map((o) => (o.id === cancelOrder.id ? data.order : o))
+      );
+      toast.success("Order cancelled", {
+        description: `${cancelOrder.orderNumber} has been cancelled.`,
+      });
+      setCancelOpen(false);
+      setCancelOrder(null);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || "Failed to cancel order";
+      toast.error(msg);
+    }
   }
 
   return (
@@ -304,83 +246,84 @@ export default function OrdersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredOrders.map((o) => (
-                <TableRow key={o.id}>
-                  <TableCell className="font-mono text-sm font-medium">
-                    {o.id}
-                  </TableCell>
-                  <TableCell className="text-sm">{o.customer}</TableCell>
-                  <TableCell className="text-center text-sm">
-                    {o.items.length}
-                  </TableCell>
-                  <TableCell className="text-right text-sm font-medium">
-                    &#8377;{o.total.toLocaleString("en-IN")}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs font-normal">
-                      {o.method}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize ${
-                        statusColors[o.status] ?? ""
-                      }`}
-                    >
-                      {o.status}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {o.date}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleView(o)}>
-                          <Eye className="h-4 w-4 mr-2" />
-                          View
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleUpdateStatusOpen(o)}
-                          disabled={o.status === "cancelled"}
-                        >
-                          <Truck className="h-4 w-4 mr-2" />
-                          Update Status
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleCancelOpen(o)}
-                          disabled={
-                            o.status === "cancelled" ||
-                            o.status === "delivered"
-                          }
-                        >
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Cancel
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
+                    Loading orders...
                   </TableCell>
                 </TableRow>
-              ))}
-              {filteredOrders.length === 0 && (
+              ) : filteredOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={8}
-                    className="text-center text-sm text-muted-foreground py-8"
-                  >
+                  <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">
                     No orders found.
                   </TableCell>
                 </TableRow>
+              ) : (
+                filteredOrders.map((o) => (
+                  <TableRow key={o.id}>
+                    <TableCell className="font-mono text-sm font-medium">
+                      {o.orderNumber}
+                    </TableCell>
+                    <TableCell className="text-sm">{o.customer.name}</TableCell>
+                    <TableCell className="text-center text-sm">
+                      {o.items.length}
+                    </TableCell>
+                    <TableCell className="text-right text-sm font-medium">
+                      ₹{fmtMoney(o.totalAmount)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs font-normal capitalize">
+                        {o.paymentMethod}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize ${
+                          statusColors[o.status] ?? ""
+                        }`}
+                      >
+                        {o.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(o.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleView(o)}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            View
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleUpdateStatusOpen(o)}
+                            disabled={o.status === "cancelled"}
+                          >
+                            <Truck className="h-4 w-4 mr-2" />
+                            Update Status
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleCancelOpen(o)}
+                            disabled={
+                              o.status === "cancelled" ||
+                              o.status === "delivered"
+                            }
+                          >
+                            <XCircle className="h-4 w-4 mr-2" />
+                            Cancel
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
@@ -393,7 +336,7 @@ export default function OrdersPage() {
           <SheetHeader>
             <SheetTitle>Order Details</SheetTitle>
             <SheetDescription>
-              Full details for {viewOrder?.id}
+              Full details for {viewOrder?.orderNumber}
             </SheetDescription>
           </SheetHeader>
           {viewOrder && (
@@ -401,20 +344,21 @@ export default function OrdersPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Order ID</p>
-                  <p className="font-mono font-medium">{viewOrder.id}</p>
+                  <p className="font-mono font-medium">{viewOrder.orderNumber}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Date</p>
-                  <p className="text-sm">{viewOrder.date}</p>
+                  <p className="text-sm">{formatDate(viewOrder.createdAt)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Customer</p>
-                  <p className="text-sm">{viewOrder.customer}</p>
+                  <p className="text-sm">{viewOrder.customer.name}</p>
+                  <p className="text-xs text-muted-foreground">{viewOrder.customer.email}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Payment</p>
-                  <Badge variant="outline" className="text-xs font-normal">
-                    {viewOrder.method}
+                  <Badge variant="outline" className="text-xs font-normal capitalize">
+                    {viewOrder.paymentMethod}
                   </Badge>
                 </div>
                 <div>
@@ -434,21 +378,19 @@ export default function OrdersPage() {
               <div>
                 <h4 className="text-sm font-medium mb-3">Items</h4>
                 <div className="space-y-3">
-                  {viewOrder.items.map((item, idx) => (
+                  {viewOrder.items.map((item) => (
                     <div
-                      key={idx}
+                      key={item.id}
                       className="flex items-center justify-between text-sm"
                     >
                       <div className="flex-1">
-                        <p className="font-medium">{item.name}</p>
+                        <p className="font-medium">{item.product.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Qty: {item.qty} x &#8377;
-                          {item.price.toLocaleString("en-IN")}
+                          Qty: {item.quantity} x ₹{fmtMoney(item.unitPrice)}
                         </p>
                       </div>
                       <p className="font-medium">
-                        &#8377;
-                        {(item.qty * item.price).toLocaleString("en-IN")}
+                        ₹{fmtMoney(item.totalPrice)}
                       </p>
                     </div>
                   ))}
@@ -457,11 +399,26 @@ export default function OrdersPage() {
 
               <Separator />
 
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Total</p>
-                <p className="text-lg font-bold">
-                  &#8377;{viewOrder.total.toLocaleString("en-IN")}
-                </p>
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span>₹{fmtMoney(viewOrder.subtotal)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">GST</span>
+                  <span>₹{fmtMoney(viewOrder.gstAmount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Shipping</span>
+                  <span>₹{fmtMoney(viewOrder.shippingCharge)}</span>
+                </div>
+                <Separator className="my-2" />
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Total</p>
+                  <p className="text-lg font-bold">
+                    ₹{fmtMoney(viewOrder.totalAmount)}
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -474,7 +431,7 @@ export default function OrdersPage() {
           <DialogHeader>
             <DialogTitle>Update Order Status</DialogTitle>
             <DialogDescription>
-              Change the status for {statusOrder?.id}
+              Change the status for {statusOrder?.orderNumber}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -492,10 +449,13 @@ export default function OrdersPage() {
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setStatusOpen(false)}>
+            <Button variant="outline" onClick={() => setStatusOpen(false)} disabled={updating}>
               Cancel
             </Button>
-            <Button onClick={handleUpdateStatusConfirm}>Update Status</Button>
+            <Button onClick={handleUpdateStatusConfirm} disabled={updating}>
+              {updating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Update Status
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -506,7 +466,7 @@ export default function OrdersPage() {
           <DialogHeader>
             <DialogTitle>Cancel Order</DialogTitle>
             <DialogDescription>
-              Cancel order {cancelOrder?.id}? This will notify the customer.
+              Cancel order {cancelOrder?.orderNumber}? This will notify the customer.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

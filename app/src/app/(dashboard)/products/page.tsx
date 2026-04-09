@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,61 +62,44 @@ import {
   Download,
   Upload,
   FileSpreadsheet,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV, downloadTemplate, importFromExcel } from "@/frontend/utils/csv-utils";
+import { apiClient } from "@/frontend/api/client";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-const CATEGORIES = [
-  "Helmets",
-  "Riding Jackets",
-  "Riding Gloves",
-  "Riding Boots",
-  "Bike Accessories",
-  "Bike Parts",
-  "Luggage & Bags",
-  "Protection Gear",
-] as const;
-
-type Category = (typeof CATEGORIES)[number];
+interface Category {
+  id: string;
+  name: string;
+}
 
 interface Product {
-  id: number;
+  id: string;
   sku: string;
   name: string;
-  category: Category;
+  categoryId: string;
+  categoryName: string;
   brand: string;
   size: string;
   color: string;
   costPrice: number;
-  price: number;
+  price: number; // sellingPrice
   mrp: number;
-  gst: number;
+  gst: number; // gstPercentage
   stock: number;
   reorderLevel: number;
   availableOnline: boolean;
+  hsn: string;
 }
 
 type StockFilter = "all" | "in-stock" | "low-stock" | "out-of-stock";
 
-// ── Initial data ────────────────────────────────────────────────────────────
-
-const initialProducts: Product[] = [
-  { id: 1, sku: "BG-HEL-001", name: "MT Thunder 3 Helmet - Black M", category: "Helmets", brand: "MT", size: "M", color: "Black", costPrice: 4200, price: 5500, mrp: 6200, gst: 18, stock: 7, reorderLevel: 3, availableOnline: true },
-  { id: 2, sku: "BG-HEL-002", name: "LS2 FF800 Storm Helmet - Blue L", category: "Helmets", brand: "LS2", size: "L", color: "Blue", costPrice: 7200, price: 8900, mrp: 9500, gst: 18, stock: 1, reorderLevel: 3, availableOnline: true },
-  { id: 3, sku: "BG-JAK-001", name: "Rynox Storm Evo Jacket - L", category: "Riding Jackets", brand: "Rynox", size: "L", color: "Black", costPrice: 4500, price: 5990, mrp: 6490, gst: 12, stock: 4, reorderLevel: 2, availableOnline: true },
-  { id: 4, sku: "BG-GLV-001", name: "Rynox Air GT Gloves - M", category: "Riding Gloves", brand: "Rynox", size: "M", color: "Black", costPrice: 1100, price: 1490, mrp: 1690, gst: 12, stock: 2, reorderLevel: 3, availableOnline: false },
-  { id: 5, sku: "BG-BOT-001", name: "Cramster Blaster Boots - 10", category: "Riding Boots", brand: "Cramster", size: "10", color: "Black", costPrice: 2200, price: 2990, mrp: 3490, gst: 18, stock: 5, reorderLevel: 2, availableOnline: true },
-  { id: 6, sku: "BG-ACC-001", name: "Royal Enfield Saddle Bag", category: "Luggage & Bags", brand: "RE", size: "One Size", color: "Brown", costPrice: 2200, price: 2990, mrp: 3490, gst: 18, stock: 6, reorderLevel: 2, availableOnline: true },
-  { id: 7, sku: "BG-ACC-002", name: "Phone Mount - Quad Lock", category: "Bike Accessories", brand: "Quad Lock", size: "Universal", color: "Black", costPrice: 2500, price: 3200, mrp: 3500, gst: 18, stock: 8, reorderLevel: 3, availableOnline: true },
-  { id: 8, sku: "BG-PRO-001", name: "Knee Guard Pro - Rynox", category: "Protection Gear", brand: "Rynox", size: "Free Size", color: "Black", costPrice: 1400, price: 1890, mrp: 2190, gst: 12, stock: 0, reorderLevel: 3, availableOnline: false },
-];
-
-const emptyForm: Omit<Product, "id"> = {
+const emptyForm: Omit<Product, "id" | "categoryName"> = {
   sku: "",
   name: "",
-  category: "Helmets",
+  categoryId: "",
   brand: "",
   size: "",
   color: "",
@@ -127,6 +110,7 @@ const emptyForm: Omit<Product, "id"> = {
   stock: 0,
   reorderLevel: 3,
   availableOnline: true,
+  hsn: "",
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -137,17 +121,60 @@ function getStatus(product: Product): "active" | "low" | "out" {
   return "active";
 }
 
+interface ApiProduct {
+  id: string;
+  sku: string;
+  name: string;
+  hsn: string | null;
+  categoryId: string;
+  category?: { name: string };
+  brand: string | null;
+  size: string | null;
+  color: string | null;
+  costPrice: string | number;
+  sellingPrice: string | number;
+  mrp: string | number;
+  gstPercentage: string | number;
+  stock: number;
+  reorderLevel: number;
+  availableOnline: boolean;
+}
+
+function mapApiProduct(p: ApiProduct): Product {
+  return {
+    id: p.id,
+    sku: p.sku,
+    name: p.name,
+    hsn: p.hsn ?? "",
+    categoryId: p.categoryId,
+    categoryName: p.category?.name ?? "",
+    brand: p.brand ?? "",
+    size: p.size ?? "",
+    color: p.color ?? "",
+    costPrice: Number(p.costPrice),
+    price: Number(p.sellingPrice),
+    mrp: Number(p.mrp),
+    gst: Number(p.gstPercentage),
+    stock: p.stock,
+    reorderLevel: p.reorderLevel,
+    availableOnline: p.availableOnline,
+  };
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<"add" | "edit">("add");
-  const [formData, setFormData] = useState<Omit<Product, "id">>(emptyForm);
-  const [editId, setEditId] = useState<number | null>(null);
+  const [formData, setFormData] = useState<Omit<Product, "id" | "categoryName">>(emptyForm);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // Duplicate detection state
   const [duplicateMatch, setDuplicateMatch] = useState<Product | null>(null);
@@ -160,6 +187,28 @@ export default function ProductsPage() {
   const [filterCategories, setFilterCategories] = useState<Set<string>>(new Set());
   const [filterStock, setFilterStock] = useState<StockFilter>("all");
 
+  // ── Data loading ──────────────────────────────────────────────────────
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [prodRes, catRes] = await Promise.all([
+        apiClient.get<{ products: ApiProduct[] }>("/products"),
+        apiClient.get<{ categories: Category[] }>("/categories"),
+      ]);
+      setProducts(prodRes.data.products.map(mapApiProduct));
+      setCategories(catRes.data.categories);
+    } catch {
+      toast.error("Failed to load products");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
   // ── Filtering logic ───────────────────────────────────────────────────
 
   const filtered = products.filter((p) => {
@@ -168,11 +217,11 @@ export default function ProductsPage() {
       !search ||
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.sku.toLowerCase().includes(search.toLowerCase()) ||
-      p.category.toLowerCase().includes(search.toLowerCase());
+      p.categoryName.toLowerCase().includes(search.toLowerCase());
 
     // Category filter
     const matchesCategory =
-      filterCategories.size === 0 || filterCategories.has(p.category);
+      filterCategories.size === 0 || filterCategories.has(p.categoryName);
 
     // Stock filter
     const status = getStatus(p);
@@ -204,8 +253,9 @@ export default function ProductsPage() {
     );
     if (match) {
       setDuplicateMatch(match);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { id: _id, ...rest } = match;
+      const { id: _id, categoryName: _cn, ...rest } = match;
+      void _id;
+      void _cn;
       setFormData({ ...rest });
       toast.warning(`Existing product found: "${match.name}" (${match.sku})`);
     } else {
@@ -215,7 +265,10 @@ export default function ProductsPage() {
 
   function openAddDialog() {
     setDialogMode("add");
-    setFormData({ ...emptyForm });
+    setFormData({
+      ...emptyForm,
+      categoryId: categories[0]?.id ?? "",
+    });
     setEditId(null);
     setDuplicateMatch(null);
     setDialogOpen(true);
@@ -224,8 +277,9 @@ export default function ProductsPage() {
   function openEditDialog(product: Product) {
     setDialogMode("edit");
     setEditId(product.id);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { id, ...rest } = product;
+    const { id: _id, categoryName: _cn, ...rest } = product;
+    void _id;
+    void _cn;
     setFormData({ ...rest });
     setDialogOpen(true);
   }
@@ -235,32 +289,79 @@ export default function ProductsPage() {
     setDeleteDialogOpen(true);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!formData.name.trim() || !formData.sku.trim()) {
       toast.error("Name and SKU are required.");
       return;
     }
-
-    if (dialogMode === "add") {
-      const newId = products.length > 0 ? Math.max(...products.map((p) => p.id)) + 1 : 1;
-      setProducts((prev) => [...prev, { id: newId, ...formData }]);
-      toast.success(`"${formData.name}" has been added.`);
-    } else if (editId !== null) {
-      setProducts((prev) =>
-        prev.map((p) => (p.id === editId ? { ...p, ...formData } : p))
-      );
-      toast.success(`"${formData.name}" has been updated.`);
+    if (!formData.categoryId) {
+      toast.error("Please select a category.");
+      return;
     }
 
-    setDialogOpen(false);
+    setSubmitting(true);
+    try {
+      const payload = {
+        sku: formData.sku.trim(),
+        name: formData.name.trim(),
+        categoryId: formData.categoryId,
+        brand: formData.brand || undefined,
+        size: formData.size || undefined,
+        color: formData.color || undefined,
+        hsn: formData.hsn || undefined,
+        costPrice: formData.costPrice,
+        sellingPrice: formData.price,
+        mrp: formData.mrp,
+        gstPercentage: formData.gst,
+        stock: formData.stock,
+        reorderLevel: formData.reorderLevel,
+        availableOnline: formData.availableOnline,
+      };
+
+      if (dialogMode === "add") {
+        const { data } = await apiClient.post<{ product: ApiProduct }>(
+          "/products",
+          payload
+        );
+        setProducts((prev) => [mapApiProduct(data.product), ...prev]);
+        toast.success(`"${formData.name}" has been added.`);
+      } else if (editId !== null) {
+        const { data } = await apiClient.put<{ product: ApiProduct }>(
+          "/products",
+          { id: editId, ...payload }
+        );
+        setProducts((prev) =>
+          prev.map((p) => (p.id === editId ? mapApiProduct(data.product) : p))
+        );
+        toast.success(`"${formData.name}" has been updated.`);
+      }
+
+      setDialogOpen(false);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || "Failed to save product";
+      toast.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!deleteTarget) return;
-    setProducts((prev) => prev.filter((p) => p.id !== deleteTarget.id));
-    toast.success(`"${deleteTarget.name}" has been deleted.`);
-    setDeleteDialogOpen(false);
-    setDeleteTarget(null);
+    try {
+      await apiClient.delete("/products", { params: { id: deleteTarget.id } });
+      setProducts((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      toast.success(`"${deleteTarget.name}" has been deleted.`);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || "Failed to delete product";
+      toast.error(msg);
+    } finally {
+      setDeleteDialogOpen(false);
+      setDeleteTarget(null);
+    }
   }
 
   function toggleCategoryFilter(cat: string) {
@@ -282,7 +383,23 @@ export default function ProductsPage() {
 
   // ── CSV / Excel ─────────────────────────────────────────────────────
 
-  const csvHeaders: { key: keyof Product; label: string }[] = [
+  type CsvRow = {
+    sku: string;
+    name: string;
+    category: string;
+    brand: string;
+    size: string;
+    color: string;
+    costPrice: number;
+    price: number;
+    mrp: number;
+    gst: number;
+    stock: number;
+    reorderLevel: number;
+    availableOnline: boolean;
+  };
+
+  const csvHeaders: { key: keyof CsvRow; label: string }[] = [
     { key: "sku", label: "SKU" },
     { key: "name", label: "Name" },
     { key: "category", label: "Category" },
@@ -315,8 +432,23 @@ export default function ProductsPage() {
   };
 
   function handleExportCSV() {
-    exportToCSV(filtered, csvHeaders, "products-export");
-    toast.success(`Exported ${filtered.length} products to CSV.`);
+    const rows: CsvRow[] = filtered.map((p) => ({
+      sku: p.sku,
+      name: p.name,
+      category: p.categoryName,
+      brand: p.brand,
+      size: p.size,
+      color: p.color,
+      costPrice: p.costPrice,
+      price: p.price,
+      mrp: p.mrp,
+      gst: p.gst,
+      stock: p.stock,
+      reorderLevel: p.reorderLevel,
+      availableOnline: p.availableOnline,
+    }));
+    exportToCSV(rows, csvHeaders, "products-export");
+    toast.success(`Exported ${rows.length} products to CSV.`);
   }
 
   function handleDownloadTemplate() {
@@ -330,9 +462,10 @@ export default function ProductsPage() {
 
     try {
       const toNum = (v: string) => Number(v) || 0;
-      const toBool = (v: string) => v.toLowerCase() === "true" || v === "1" || v.toLowerCase() === "yes";
+      const toBool = (v: string) =>
+        v.toLowerCase() === "true" || v === "1" || v.toLowerCase() === "yes";
 
-      const imported = await importFromExcel<Omit<Product, "id">>(file, [
+      const imported = await importFromExcel<CsvRow>(file, [
         { label: "SKU", key: "sku" },
         { label: "Name", key: "name" },
         { label: "Category", key: "category" },
@@ -354,18 +487,52 @@ export default function ProductsPage() {
         return;
       }
 
-      let maxId = products.length > 0 ? Math.max(...products.map((p) => p.id)) : 0;
-      const newProducts = valid.map((p) => ({
-        ...p,
-        id: ++maxId,
-        category: (p.category || "Helmets") as Category,
-        gst: p.gst || 18,
-        reorderLevel: p.reorderLevel || 3,
-        availableOnline: p.availableOnline ?? true,
-      }));
+      // Build category lookup; create missing categories on-the-fly
+      const catMap = new Map(categories.map((c) => [c.name.toLowerCase(), c]));
+      let workingCats = [...categories];
 
-      setProducts((prev) => [...prev, ...newProducts]);
-      toast.success(`Imported ${newProducts.length} products.`);
+      let success = 0;
+      let failed = 0;
+      for (const row of valid) {
+        try {
+          let categoryId = catMap.get((row.category || "").toLowerCase())?.id;
+          if (!categoryId) {
+            const name = (row.category || "Uncategorized").trim();
+            const { data } = await apiClient.post<{ category: Category }>(
+              "/categories",
+              { name }
+            );
+            workingCats = [...workingCats, data.category];
+            catMap.set(data.category.name.toLowerCase(), data.category);
+            categoryId = data.category.id;
+          }
+
+          await apiClient.post("/products", {
+            sku: row.sku,
+            name: row.name,
+            categoryId,
+            brand: row.brand || undefined,
+            size: row.size || undefined,
+            color: row.color || undefined,
+            costPrice: row.costPrice || 0,
+            sellingPrice: row.price || 0,
+            mrp: row.mrp || 0,
+            gstPercentage: row.gst || 18,
+            stock: row.stock || 0,
+            reorderLevel: row.reorderLevel || 3,
+            availableOnline: row.availableOnline ?? true,
+          });
+          success++;
+        } catch {
+          failed++;
+        }
+      }
+
+      setCategories(workingCats);
+      await loadAll();
+
+      if (success > 0) toast.success(`Imported ${success} products.`);
+      if (failed > 0) toast.error(`${failed} rows failed to import.`);
     } catch {
       toast.error("Failed to import file. Please check the format.");
     }
@@ -376,9 +543,9 @@ export default function ProductsPage() {
 
   // ── Form updater ──────────────────────────────────────────────────────
 
-  function updateField<K extends keyof Omit<Product, "id">>(
+  function updateField<K extends keyof Omit<Product, "id" | "categoryName">>(
     key: K,
-    value: Omit<Product, "id">[K]
+    value: Omit<Product, "id" | "categoryName">[K]
   ) {
     setFormData((prev) => ({ ...prev, [key]: value }));
   }
@@ -536,18 +703,18 @@ export default function ProductsPage() {
                         Category
                       </p>
                       <div className="space-y-1.5">
-                        {CATEGORIES.map((cat) => (
+                        {categories.map((cat) => (
                           <label
-                            key={cat}
+                            key={cat.id}
                             className="flex items-center gap-2 cursor-pointer text-sm"
                           >
                             <input
                               type="checkbox"
-                              checked={filterCategories.has(cat)}
-                              onChange={() => toggleCategoryFilter(cat)}
+                              checked={filterCategories.has(cat.name)}
+                              onChange={() => toggleCategoryFilter(cat.name)}
                               className="rounded border-input h-4 w-4 accent-primary"
                             />
-                            {cat}
+                            {cat.name}
                           </label>
                         ))}
                       </div>
@@ -606,7 +773,17 @@ export default function ProductsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.length === 0 ? (
+              {loading ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={8}
+                    className="text-center py-10 text-muted-foreground"
+                  >
+                    <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
+                    Loading products...
+                  </TableCell>
+                </TableRow>
+              ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={8}
@@ -636,7 +813,7 @@ export default function ProductsPage() {
                           variant="secondary"
                           className="text-xs font-normal"
                         >
-                          {p.category}
+                          {p.categoryName}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right text-sm font-medium">
@@ -779,18 +956,16 @@ export default function ProductsPage() {
               <div className="space-y-2">
                 <Label>Category</Label>
                 <Select
-                  value={formData.category}
-                  onValueChange={(val) =>
-                    updateField("category", val as Category)
-                  }
+                  value={formData.categoryId}
+                  onValueChange={(val) => updateField("categoryId", val)}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CATEGORIES.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -934,9 +1109,12 @@ export default function ProductsPage() {
 
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
+              <Button variant="outline" disabled={submitting}>
+                Cancel
+              </Button>
             </DialogClose>
-            <Button onClick={handleSubmit}>
+            <Button onClick={handleSubmit} disabled={submitting}>
+              {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {dialogMode === "add" ? "Add Product" : "Save Changes"}
             </Button>
           </DialogFooter>

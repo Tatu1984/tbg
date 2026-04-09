@@ -1,11 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -37,47 +34,49 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, MoreHorizontal, Edit, Trash2, Phone, MapPin } from "lucide-react";
+import {
+  Plus,
+  MoreHorizontal,
+  Edit,
+  Trash2,
+  Phone,
+  MapPin,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
+import { apiClient } from "@/frontend/api/client";
 
 type Supplier = {
-  id: number;
+  id: string;
   name: string;
-  contact: string;
-  gst: string;
-  address: string;
-  terms: string;
+  contactPhone: string | null;
+  gstNumber: string | null;
+  address: string | null;
+  paymentTerms: string | null;
 };
-
-const initialSuppliers: Supplier[] = [
-  { id: 1, name: "Rynox Gear Pvt Ltd", contact: "+91 80 2656 1234", gst: "29AABCR1234M1ZR", address: "Bangalore, KA", terms: "Net 30" },
-  { id: 2, name: "Steelbird Helmets", contact: "+91 124 456 7890", gst: "06AABCS5678N1ZQ", address: "Gurugram, HR", terms: "Net 15" },
-  { id: 3, name: "Cramster Motorcycling", contact: "+91 80 4123 5678", gst: "29AABCC9012P1ZR", address: "Bangalore, KA", terms: "Net 30" },
-  { id: 4, name: "Royal Enfield Accessories", contact: "+91 44 2231 4567", gst: "33AABCR3456Q1ZS", address: "Chennai, TN", terms: "COD" },
-  { id: 5, name: "Quad Lock India", contact: "+91 22 6789 0123", gst: "27AABCQ7890R1ZT", address: "Mumbai, MH", terms: "Net 45" },
-];
 
 const paymentTermsOptions = ["COD", "Net 15", "Net 30", "Net 45", "Net 60"];
 
 type FormData = {
   name: string;
-  contact: string;
+  contactPhone: string;
   address: string;
-  gst: string;
-  terms: string;
+  gstNumber: string;
+  paymentTerms: string;
 };
 
 const emptyForm: FormData = {
   name: "",
-  contact: "",
+  contactPhone: "",
   address: "",
-  gst: "",
-  terms: "",
+  gstNumber: "",
+  paymentTerms: "",
 };
 
 export default function SuppliersPage() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
-  const [nextId, setNextId] = useState(6);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   // Add/Edit dialog state
   const [formOpen, setFormOpen] = useState(false);
@@ -87,6 +86,22 @@ export default function SuppliersPage() {
   // Delete dialog state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingSupplier, setDeletingSupplier] = useState<Supplier | null>(null);
+
+  const loadSuppliers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await apiClient.get<{ suppliers: Supplier[] }>("/suppliers");
+      setSuppliers(data.suppliers);
+    } catch {
+      toast.error("Failed to load suppliers");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSuppliers();
+  }, [loadSuppliers]);
 
   function openAddDialog() {
     setEditingSupplier(null);
@@ -98,10 +113,10 @@ export default function SuppliersPage() {
     setEditingSupplier(supplier);
     setForm({
       name: supplier.name,
-      contact: supplier.contact,
-      address: supplier.address,
-      gst: supplier.gst,
-      terms: supplier.terms,
+      contactPhone: supplier.contactPhone ?? "",
+      address: supplier.address ?? "",
+      gstNumber: supplier.gstNumber ?? "",
+      paymentTerms: supplier.paymentTerms ?? "",
     });
     setFormOpen(true);
   }
@@ -111,42 +126,70 @@ export default function SuppliersPage() {
     setDeleteOpen(true);
   }
 
-  function handleFormSubmit(e: React.FormEvent) {
+  async function handleFormSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!form.name.trim() || !form.contact.trim() || !form.terms) {
-      toast.error("Please fill in all required fields.");
+    if (!form.name.trim()) {
+      toast.error("Supplier name is required.");
       return;
     }
 
-    if (editingSupplier) {
-      setSuppliers((prev) =>
-        prev.map((s) =>
-          s.id === editingSupplier.id
-            ? { ...s, ...form }
-            : s
-        )
-      );
-      toast.success(`"${form.name}" has been updated.`);
-    } else {
-      const newSupplier: Supplier = {
-        id: nextId,
-        ...form,
+    setSubmitting(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        contactPhone: form.contactPhone || undefined,
+        address: form.address || undefined,
+        gstNumber: form.gstNumber || undefined,
+        paymentTerms: form.paymentTerms || undefined,
       };
-      setSuppliers((prev) => [...prev, newSupplier]);
-      setNextId((prev) => prev + 1);
-      toast.success(`"${form.name}" has been added.`);
-    }
 
-    setFormOpen(false);
+      if (editingSupplier) {
+        const { data } = await apiClient.put<{ supplier: Supplier }>(
+          "/suppliers",
+          { id: editingSupplier.id, ...payload }
+        );
+        setSuppliers((prev) =>
+          prev.map((s) => (s.id === editingSupplier.id ? data.supplier : s))
+        );
+        toast.success(`"${form.name}" has been updated.`);
+      } else {
+        const { data } = await apiClient.post<{ supplier: Supplier }>(
+          "/suppliers",
+          payload
+        );
+        setSuppliers((prev) => [...prev, data.supplier].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        ));
+        toast.success(`"${form.name}" has been added.`);
+      }
+
+      setFormOpen(false);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || "Failed to save supplier";
+      toast.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!deletingSupplier) return;
-    setSuppliers((prev) => prev.filter((s) => s.id !== deletingSupplier.id));
-    toast.success(`"${deletingSupplier.name}" has been removed.`);
-    setDeleteOpen(false);
-    setDeletingSupplier(null);
+    try {
+      await apiClient.delete("/suppliers", { params: { id: deletingSupplier.id } });
+      setSuppliers((prev) => prev.filter((s) => s.id !== deletingSupplier.id));
+      toast.success(`"${deletingSupplier.name}" has been removed.`);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || "Failed to delete supplier";
+      toast.error(msg);
+    } finally {
+      setDeleteOpen(false);
+      setDeletingSupplier(null);
+    }
   }
 
   return (
@@ -178,55 +221,67 @@ export default function SuppliersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {suppliers.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-medium">{s.name}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <Phone className="h-3.5 w-3.5" />
-                      {s.contact}
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {s.gst}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <MapPin className="h-3.5 w-3.5" />
-                      {s.address}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">{s.terms}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openEditDialog(s)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => openDeleteDialog(s)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
+                    Loading suppliers...
                   </TableCell>
                 </TableRow>
-              ))}
-              {suppliers.length === 0 && (
+              ) : suppliers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     No suppliers found. Add one to get started.
                   </TableCell>
                 </TableRow>
+              ) : (
+                suppliers.map((s) => (
+                  <TableRow key={s.id}>
+                    <TableCell className="font-medium">{s.name}</TableCell>
+                    <TableCell>
+                      {s.contactPhone && (
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <Phone className="h-3.5 w-3.5" />
+                          {s.contactPhone}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {s.gstNumber || "—"}
+                    </TableCell>
+                    <TableCell>
+                      {s.address && (
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5" />
+                          {s.address}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm">{s.paymentTerms || "—"}</TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditDialog(s)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => openDeleteDialog(s)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
@@ -257,12 +312,12 @@ export default function SuppliersPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="supplier-contact">Contact Number *</Label>
+              <Label htmlFor="supplier-contact">Contact Number</Label>
               <Input
                 id="supplier-contact"
                 placeholder="e.g. +91 80 2656 1234"
-                value={form.contact}
-                onChange={(e) => setForm((f) => ({ ...f, contact: e.target.value }))}
+                value={form.contactPhone}
+                onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
@@ -279,15 +334,15 @@ export default function SuppliersPage() {
               <Input
                 id="supplier-gst"
                 placeholder="e.g. 29AABCR1234M1ZR"
-                value={form.gst}
-                onChange={(e) => setForm((f) => ({ ...f, gst: e.target.value }))}
+                value={form.gstNumber}
+                onChange={(e) => setForm((f) => ({ ...f, gstNumber: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
-              <Label>Payment Terms *</Label>
+              <Label>Payment Terms</Label>
               <Select
-                value={form.terms}
-                onValueChange={(value) => setForm((f) => ({ ...f, terms: value }))}
+                value={form.paymentTerms}
+                onValueChange={(value) => setForm((f) => ({ ...f, paymentTerms: value }))}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select payment terms" />
@@ -306,10 +361,12 @@ export default function SuppliersPage() {
                 type="button"
                 variant="outline"
                 onClick={() => setFormOpen(false)}
+                disabled={submitting}
               >
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button type="submit" disabled={submitting}>
+                {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 {editingSupplier ? "Save Changes" : "Add Supplier"}
               </Button>
             </DialogFooter>

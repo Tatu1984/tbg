@@ -83,3 +83,35 @@ export async function PUT(req: NextRequest) {
     return handleError(error);
   }
 }
+
+// DELETE /api/suppliers?id=... - delete supplier (only if no purchases)
+export async function DELETE(req: NextRequest) {
+  try {
+    const auth = await authenticateRequest(req);
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const role = auth.user.role as string;
+    if (!["owner", "manager"].includes(role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    if (!id) throw new AppError("Supplier ID is required", 400);
+
+    const purchaseCount = await prisma.purchase.count({ where: { supplierId: id } });
+    if (purchaseCount > 0) {
+      throw new AppError(
+        `Cannot delete supplier with ${purchaseCount} purchase orders`,
+        409
+      );
+    }
+
+    await prisma.supplier.delete({ where: { id } });
+    return NextResponse.json({ message: "Supplier deleted" });
+  } catch (error) {
+    return handleError(error);
+  }
+}

@@ -1,8 +1,8 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -24,30 +24,46 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Search,
   Warehouse,
   TrendingDown,
   TrendingUp,
-  ArrowUpDown,
   Package,
   Download,
-  Upload,
   FileSpreadsheet,
+  Plus,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useState } from "react";
-import { exportToCSV, downloadTemplate, importFromExcel } from "@/frontend/utils/csv-utils";
+import { useState, useEffect, useCallback } from "react";
+import { exportToCSV } from "@/frontend/utils/csv-utils";
+import { apiClient } from "@/frontend/api/client";
 
-const movements = [
-  { id: "ST-10012", product: "MT Thunder 3 Helmet", type: "Sale", qty: -1, user: "Cashier", date: "05 Mar, 2:30 PM" },
-  { id: "ST-10011", product: "Rynox Air GT Gloves", type: "Sale", qty: -2, user: "Cashier", date: "05 Mar, 1:15 PM" },
-  { id: "ST-10010", product: "LS2 FF800 Helmet", type: "Purchase", qty: +5, user: "Admin", date: "05 Mar, 11:00 AM" },
-  { id: "ST-10009", product: "Quad Lock Phone Mount", type: "Sale", qty: -1, user: "Cashier", date: "04 Mar, 5:45 PM" },
-  { id: "ST-10008", product: "Cramster Blaster Boots", type: "Return", qty: +1, user: "Manager", date: "04 Mar, 3:20 PM" },
-  { id: "ST-10007", product: "Royal Enfield Saddle Bag", type: "Cash Sale", qty: -1, user: "Cashier", date: "04 Mar, 2:00 PM" },
-  { id: "ST-10006", product: "AGV K3 SV Helmet", type: "Damaged", qty: -1, user: "Admin", date: "03 Mar, 4:30 PM" },
-  { id: "ST-10005", product: "Rynox Storm Evo Jacket", type: "Sale", qty: -1, user: "Cashier", date: "03 Mar, 12:00 PM" },
-];
+const TX_TYPES = [
+  "Purchase",
+  "Sale",
+  "Cash Sale",
+  "Return",
+  "Damaged",
+  "Adjustment",
+] as const;
+type TxType = (typeof TX_TYPES)[number];
 
 const typeColors: Record<string, string> = {
   Sale: "bg-blue-500/10 text-blue-700",
@@ -58,82 +74,161 @@ const typeColors: Record<string, string> = {
   Adjustment: "bg-gray-500/10 text-gray-700",
 };
 
-interface Movement {
+interface ApiTransaction {
   id: string;
-  product: string;
+  productId: string;
+  userId: string;
   type: string;
-  qty: number;
-  user: string;
-  date: string;
+  quantity: number;
+  notes: string | null;
+  createdAt: string;
+  product: { name: string; sku: string };
+  user: { name: string };
 }
 
-const csvHeaders: { key: keyof Movement; label: string }[] = [
-  { key: "id", label: "Transaction ID" },
-  { key: "product", label: "Product" },
-  { key: "type", label: "Type" },
-  { key: "qty", label: "Quantity" },
-  { key: "user", label: "User" },
-  { key: "date", label: "Date" },
-];
+interface ApiProduct {
+  id: string;
+  sku: string;
+  name: string;
+  stock: number;
+  reorderLevel: number;
+}
 
-const sampleMovement: Record<string, unknown> = {
-  id: "ST-10099",
-  product: "Sample Product Name",
-  type: "Purchase",
-  qty: 5,
-  user: "Admin",
-  date: "05 Mar, 10:00 AM",
-};
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export default function InventoryPage() {
-  const [allMovements, setAllMovements] = useState<Movement[]>(movements);
+  const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
+  const [products, setProducts] = useState<ApiProduct[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  const filtered = allMovements.filter(
+  // Adjust stock dialog
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formProductId, setFormProductId] = useState("");
+  const [formType, setFormType] = useState<TxType>("Purchase");
+  const [formQty, setFormQty] = useState<number>(0);
+  const [formNotes, setFormNotes] = useState("");
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [txRes, prodRes] = await Promise.all([
+        apiClient.get<{ transactions: ApiTransaction[] }>("/inventory", {
+          params: { limit: 100 },
+        }),
+        apiClient.get<{ products: ApiProduct[] }>("/products"),
+      ]);
+      setTransactions(txRes.data.transactions);
+      setProducts(prodRes.data.products);
+    } catch {
+      toast.error("Failed to load inventory data");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  const filtered = transactions.filter(
     (m) =>
-      m.product.toLowerCase().includes(search.toLowerCase()) ||
+      m.product.name.toLowerCase().includes(search.toLowerCase()) ||
+      m.product.sku.toLowerCase().includes(search.toLowerCase()) ||
       m.type.toLowerCase().includes(search.toLowerCase())
   );
 
-  function handleExportCSV() {
-    exportToCSV(filtered, csvHeaders, "inventory-movements");
-    toast.success(`Exported ${filtered.length} movements to CSV.`);
+  // ── Stats ──────────────────────────────────────────────────────────
+  const todayStr = new Date().toDateString();
+  const todayTx = transactions.filter(
+    (t) => new Date(t.createdAt).toDateString() === todayStr
+  );
+  const stockInToday = todayTx
+    .filter((t) => t.quantity > 0)
+    .reduce((sum, t) => sum + t.quantity, 0);
+  const stockOutToday = todayTx
+    .filter((t) => t.quantity < 0)
+    .reduce((sum, t) => sum + t.quantity, 0);
+  const lowStockCount = products.filter(
+    (p) => p.stock <= p.reorderLevel && p.stock > 0
+  ).length;
+  const totalSkus = products.length;
+
+  // ── Handlers ──────────────────────────────────────────────────────
+  function openAdjustDialog() {
+    setFormProductId(products[0]?.id ?? "");
+    setFormType("Purchase");
+    setFormQty(0);
+    setFormNotes("");
+    setDialogOpen(true);
   }
 
-  function handleDownloadTemplate() {
-    downloadTemplate(csvHeaders, "inventory-movements", sampleMovement);
-    toast.success("Template downloaded.");
-  }
-
-  async function handleImportExcel(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const toNum = (v: string) => Number(v) || 0;
-
-      const imported = await importFromExcel<Movement>(file, [
-        { label: "Transaction ID", key: "id" },
-        { label: "Product", key: "product" },
-        { label: "Type", key: "type" },
-        { label: "Quantity", key: "qty", transform: toNum },
-        { label: "User", key: "user" },
-        { label: "Date", key: "date" },
-      ]);
-
-      const valid = imported.filter((m) => m.product && m.type);
-      if (valid.length === 0) {
-        toast.error("No valid rows found. Ensure Product and Type columns are filled.");
-        return;
-      }
-
-      setAllMovements((prev) => [...valid, ...prev]);
-      toast.success(`Imported ${valid.length} movements.`);
-    } catch {
-      toast.error("Failed to import file. Please check the format.");
+  async function handleSubmitAdjustment() {
+    if (!formProductId) {
+      toast.error("Select a product");
+      return;
+    }
+    if (!formQty) {
+      toast.error("Quantity must be non-zero");
+      return;
     }
 
-    e.target.value = "";
+    setSubmitting(true);
+    try {
+      await apiClient.post("/inventory", {
+        productId: formProductId,
+        type: formType,
+        quantity: Number(formQty),
+        notes: formNotes || undefined,
+      });
+      toast.success("Stock adjusted");
+      setDialogOpen(false);
+      await loadAll();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || "Failed to adjust stock";
+      toast.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleExportCSV() {
+    const rows = filtered.map((m) => ({
+      id: m.id,
+      product: m.product.name,
+      sku: m.product.sku,
+      type: m.type,
+      qty: m.quantity,
+      user: m.user.name,
+      date: formatDate(m.createdAt),
+      notes: m.notes ?? "",
+    }));
+    exportToCSV(
+      rows,
+      [
+        { key: "id", label: "Transaction ID" },
+        { key: "product", label: "Product" },
+        { key: "sku", label: "SKU" },
+        { key: "type", label: "Type" },
+        { key: "qty", label: "Quantity" },
+        { key: "user", label: "User" },
+        { key: "date", label: "Date" },
+        { key: "notes", label: "Notes" },
+      ],
+      "inventory-movements"
+    );
+    toast.success(`Exported ${rows.length} movements to CSV.`);
   }
 
   return (
@@ -150,7 +245,7 @@ export default function InventoryPage() {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
                 <FileSpreadsheet className="h-4 w-4" />
-                Import / Export
+                Export
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -158,34 +253,41 @@ export default function InventoryPage() {
                 <Download className="h-4 w-4 mr-2" />
                 Export to CSV
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDownloadTemplate}>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Download Template
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => document.getElementById("inventory-import")?.click()}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Import from Excel / CSV
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <input
-            id="inventory-import"
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={handleImportExcel}
-          />
+          <Button className="gap-2" onClick={openAdjustDialog}>
+            <Plus className="h-4 w-4" />
+            Adjust Stock
+          </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Total SKUs", value: "48", icon: Package, color: "text-blue-600" },
-          { label: "Stock In Today", value: "+5", icon: TrendingUp, color: "text-emerald-600" },
-          { label: "Stock Out Today", value: "-4", icon: TrendingDown, color: "text-red-500" },
-          { label: "Low Stock Items", value: "7", icon: Warehouse, color: "text-amber-600" },
+          {
+            label: "Total SKUs",
+            value: String(totalSkus),
+            icon: Package,
+            color: "text-blue-600",
+          },
+          {
+            label: "Stock In Today",
+            value: stockInToday > 0 ? `+${stockInToday}` : "0",
+            icon: TrendingUp,
+            color: "text-emerald-600",
+          },
+          {
+            label: "Stock Out Today",
+            value: String(stockOutToday),
+            icon: TrendingDown,
+            color: "text-red-500",
+          },
+          {
+            label: "Low Stock Items",
+            value: String(lowStockCount),
+            icon: Warehouse,
+            color: "text-amber-600",
+          },
         ].map((s) => {
           const SIcon = s.icon;
           return (
@@ -230,42 +332,139 @@ export default function InventoryPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {m.id}
-                  </TableCell>
-                  <TableCell className="font-medium text-sm">{m.product}</TableCell>
-                  <TableCell>
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
-                        typeColors[m.type] || typeColors.Adjustment
-                      }`}
-                    >
-                      {m.type}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <span
-                      className={`text-sm font-semibold ${
-                        m.qty > 0 ? "text-emerald-600" : "text-red-500"
-                      }`}
-                    >
-                      {m.qty > 0 ? `+${m.qty}` : m.qty}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {m.user}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {m.date}
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
+                    Loading movements...
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                    No movements found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filtered.map((m) => (
+                  <TableRow key={m.id}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {m.id.slice(0, 10)}
+                    </TableCell>
+                    <TableCell className="font-medium text-sm">
+                      {m.product.name}
+                      <span className="block text-xs text-muted-foreground">
+                        {m.product.sku}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${
+                          typeColors[m.type] || typeColors.Adjustment
+                        }`}
+                      >
+                        {m.type}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span
+                        className={`text-sm font-semibold ${
+                          m.quantity > 0 ? "text-emerald-600" : "text-red-500"
+                        }`}
+                      >
+                        {m.quantity > 0 ? `+${m.quantity}` : m.quantity}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {m.user.name}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(m.createdAt)}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      {/* Adjust Stock Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Adjust Stock</DialogTitle>
+            <DialogDescription>
+              Record a stock movement. Use a negative quantity for outflows.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Product</Label>
+              <Select value={formProductId} onValueChange={setFormProductId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select product" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} ({p.sku}) — stock: {p.stock}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <Select
+                  value={formType}
+                  onValueChange={(v) => setFormType(v as TxType)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TX_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {t}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Quantity</Label>
+                <Input
+                  type="number"
+                  value={formQty || ""}
+                  onChange={(e) => setFormQty(Number(e.target.value))}
+                  placeholder="e.g. 5 or -2"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Notes (optional)</Label>
+              <Input
+                value={formNotes}
+                onChange={(e) => setFormNotes(e.target.value)}
+                placeholder="Reference, reason..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" disabled={submitting}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button onClick={handleSubmitAdjustment} disabled={submitting}>
+              {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
