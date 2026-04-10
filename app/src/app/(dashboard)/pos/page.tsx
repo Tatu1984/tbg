@@ -424,35 +424,110 @@ export default function POSPage() {
   const [invoicePreviewOpen, setInvoicePreviewOpen] = useState(false);
   const [invoiceSnapshot, setInvoiceSnapshot] = useState<InvoiceSnapshotType | null>(null);
 
+  // ── Save to DB (called on print, NOT on generate) ──────────────
+  const [saving, setSaving] = useState(false);
+
+  async function saveInvoiceToDB(): Promise<string | null> {
+    if (!invoiceSnapshot || saving) return null;
+    setSaving(true);
+    const paymentMethodMap: Record<string, string> = {
+      cash: "cash", upi: "upi", card: "credit_card", split: "split",
+    };
+    try {
+      const { data } = await apiClient.post("/billing", {
+        items: invoiceSnapshot.items.map((it) => ({
+          productId: it.product.id,
+          quantity: it.quantity,
+          discount: getItemDiscountAmount(it),
+        })),
+        paymentMethod: paymentMethodMap[invoiceSnapshot.paymentMethod] || "cash",
+        paymentDetail:
+          invoiceSnapshot.paymentMethod === "upi" ? "UPI"
+          : invoiceSnapshot.paymentMethod === "card" ? "Card"
+          : undefined,
+        discount: invoiceSnapshot.globalDiscount,
+        customerName: invoiceSnapshot.customer.name || undefined,
+        customerPhone: invoiceSnapshot.customer.phone || undefined,
+      });
+      const realNo = data.invoice.invoiceNumber;
+
+      // Update snapshot with DB-generated invoice number
+      setInvoiceSnapshot((prev) => prev ? { ...prev, invoiceNo: realNo } : prev);
+
+      // Update local stock counts
+      setProducts((prev) =>
+        prev.map((p) => {
+          const sold = invoiceSnapshot.items.find((it) => it.product.id === p.id);
+          return sold ? { ...p, stock: p.stock - sold.quantity } : p;
+        })
+      );
+
+      if (isCash) setCashCounter((c) => c + 1);
+      else setRegularCounter((c) => c + 1);
+
+      toast.success(`Invoice ${realNo} saved!`);
+      return realNo;
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || "Failed to save invoice";
+      toast.error(msg);
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function handlePrint() {
     if (!invoiceSnapshot) return;
-    const html = generateInvoiceHTML(invoiceSnapshot);
-    const printWindow = window.open("", "_blank", "width=900,height=700");
-    if (!printWindow) return;
-    printWindow.document.write(html);
-    printWindow.document.close();
-    // Let user see preview, then print via Ctrl+P or browser print
+
+    // Save to DB first, then open preview
+    saveInvoiceToDB().then((realNo) => {
+      if (!realNo) return;
+      const snap = { ...invoiceSnapshot, invoiceNo: realNo };
+      const html = generateInvoiceHTML(snap);
+      const printWindow = window.open("", "_blank", "width=900,height=700");
+      if (!printWindow) return;
+      printWindow.document.write(html);
+      printWindow.document.close();
+      cleanupAfterPrint();
+    });
   }
 
   function handleDirectPrint() {
     if (!invoiceSnapshot) return;
-    const html = generateInvoiceHTML(invoiceSnapshot);
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow?.document;
-    if (!doc) return;
-    doc.open();
-    doc.write(html);
-    doc.close();
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    setTimeout(() => document.body.removeChild(iframe), 1000);
+
+    saveInvoiceToDB().then((realNo) => {
+      if (!realNo) return;
+      const snap = { ...invoiceSnapshot, invoiceNo: realNo };
+      const html = generateInvoiceHTML(snap);
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) return;
+      doc.open();
+      doc.write(html);
+      doc.close();
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => document.body.removeChild(iframe), 1000);
+      cleanupAfterPrint();
+    });
+  }
+
+  function cleanupAfterPrint() {
+    setInvoicePreviewOpen(false);
+    setItems([]);
+    setGlobalDiscount(0);
+    setCustomer({ name: "", phone: "", address: "", gstin: "", stateCode: "" });
+    setManualInvoiceNo("");
+    setManualDate("");
   }
 
   // New product form
@@ -647,94 +722,35 @@ export default function POSPage() {
     }
   }
 
-  async function handleGenerateInvoice() {
+  function handleGenerateInvoice() {
     if (items.length === 0) {
       toast.error("Add items to the invoice first");
       return;
     }
-    if (!storeSettings || !token) return;
+    if (!storeSettings) return;
 
-    setSubmitting(true);
+    const invoiceDate = manualDate
+      ? new Date(manualDate).toLocaleDateString("en-IN")
+      : new Date().toLocaleDateString("en-IN");
 
-    // Map payment method to API enum
-    const paymentMethodMap: Record<string, string> = {
-      cash: "cash",
-      upi: "upi",
-      card: "credit_card",
-      split: "split",
-    };
-    const apiPaymentMethod = paymentMethodMap[paymentMethod] || "cash";
+    // Build preview only — DB save happens on Print.
+    const previewNo = manualInvoiceNo.trim() || "(will be assigned on print)";
 
-    try {
-      // Save invoice to database
-      const { data: billingData } = await apiClient.post("/billing", {
-        items: items.map((it) => ({
-          productId: it.product.id,
-          quantity: it.quantity,
-          discount: getItemDiscountAmount(it),
-        })),
-        paymentMethod: apiPaymentMethod,
-        paymentDetail: paymentMethod === "upi" ? "UPI" : paymentMethod === "card" ? "Card" : undefined,
-        discount: globalDiscount,
-      });
-
-      const savedInvoice = billingData.invoice;
-
-      // Use the DB-generated invoice number
-      const currentInvoiceNo = manualInvoiceNo.trim() || savedInvoice.invoiceNumber;
-
-      if (isCash) {
-        setCashCounter((c) => c + 1);
-      } else {
-        setRegularCounter((c) => c + 1);
-      }
-
-      const invoiceDate = manualDate
-        ? new Date(manualDate).toLocaleDateString("en-IN")
-        : new Date().toLocaleDateString("en-IN");
-
-      setInvoiceSnapshot({
-        invoiceNo: currentInvoiceNo,
-        items: [...items],
-        customer: { ...customer },
-        subtotal,
-        totalGst,
-        globalDiscount,
-        grandTotal,
-        paymentMethod,
-        isCash: !applyGst,
-        store: storeSettings,
-        bank: storeSettings.bankAccounts.find((b) => b.id === selectedBankId) || getDefaultBank(storeSettings),
-        date: invoiceDate,
-      });
-      setInvoicePreviewOpen(true);
-
-      // Update local stock counts
-      setProducts(
-        products.map((p) => {
-          const invoiceItem = items.find((it) => it.product.id === p.id);
-          if (invoiceItem) {
-            return { ...p, stock: p.stock - invoiceItem.quantity };
-          }
-          return p;
-        })
-      );
-
-      toast.success(
-        `Invoice ${currentInvoiceNo} saved! Total: \u20B9${grandTotal.toLocaleString("en-IN", {
-          maximumFractionDigits: 0,
-        })} (${paymentMethod.toUpperCase()})`
-      );
-      setItems([]);
-      setGlobalDiscount(0);
-      setCustomer({ name: "", phone: "", address: "", gstin: "", stateCode: "" });
-      setManualInvoiceNo("");
-      setManualDate("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save invoice");
-    } finally {
-      setSubmitting(false);
-    }
+    setInvoiceSnapshot({
+      invoiceNo: previewNo,
+      items: [...items],
+      customer: { ...customer },
+      subtotal,
+      totalGst,
+      globalDiscount,
+      grandTotal,
+      paymentMethod,
+      isCash: !applyGst,
+      store: storeSettings,
+      bank: storeSettings.bankAccounts.find((b) => b.id === selectedBankId) || getDefaultBank(storeSettings),
+      date: invoiceDate,
+    });
+    setInvoicePreviewOpen(true);
   }
 
   return (
@@ -1520,15 +1536,15 @@ export default function POSPage() {
 
               <DialogFooter className="gap-2">
                 <DialogClose asChild>
-                  <Button variant="outline">Close</Button>
+                  <Button variant="outline" disabled={saving}>Close</Button>
                 </DialogClose>
-                <Button variant="outline" className="gap-2" onClick={handlePrint}>
+                <Button variant="outline" className="gap-2" onClick={handlePrint} disabled={saving}>
                   <Eye className="h-4 w-4" />
-                  Preview in New Tab
+                  {saving ? "Saving..." : "Preview in New Tab"}
                 </Button>
-                <Button className="gap-2" onClick={handleDirectPrint}>
+                <Button className="gap-2" onClick={handleDirectPrint} disabled={saving}>
                   <Printer className="h-4 w-4" />
-                  Print Invoice
+                  {saving ? "Saving..." : "Print Invoice"}
                 </Button>
               </DialogFooter>
             </>

@@ -13,4 +13,6 @@ export const createInvoiceSchema = z.object({
   paymentMethod: z.enum(["cash", "upi", "credit_card", "debit_card", "split"]),
   paymentDetail: z.string().optional(),
   discount: z.number().min(0).default(0),
+  customerName: z.string().optional(),
+  customerPhone: z.string().optional(),
 });
