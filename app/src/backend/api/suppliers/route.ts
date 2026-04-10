@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/backend/database/client";
 import { authenticateRequest } from "@/backend/api/middleware";
+import { requirePagePermission } from "@/backend/auth/permissions";
 import { handleError, AppError } from "@/backend/utils/error-handler.util";
 
 const supplierSchema = z.object({
@@ -33,15 +34,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await authenticateRequest(req);
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const role = auth.user.role as string;
-    if (!["owner", "manager", "inventory_staff"].includes(role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const auth = await requirePagePermission(req, "suppliers");
+    if (auth instanceof NextResponse) return auth;
 
     const body = await req.json();
     const parsed = supplierSchema.safeParse(body);
@@ -58,15 +52,8 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const auth = await authenticateRequest(req);
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const role = auth.user.role as string;
-    if (!["owner", "manager"].includes(role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const auth = await requirePagePermission(req, "suppliers");
+    if (auth instanceof NextResponse) return auth;
 
     const body = await req.json();
     const { id, ...updateData } = body;
@@ -87,15 +74,8 @@ export async function PUT(req: NextRequest) {
 // DELETE /api/suppliers?id=... - delete supplier (only if no purchases)
 export async function DELETE(req: NextRequest) {
   try {
-    const auth = await authenticateRequest(req);
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const role = auth.user.role as string;
-    if (!["owner", "manager"].includes(role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const auth = await requirePagePermission(req, "suppliers");
+    if (auth instanceof NextResponse) return auth;
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");

@@ -45,7 +45,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/frontend/hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { getAllowedPages, type NavKey } from "@/config/permissions";
+import { useAllowedPages } from "@/frontend/hooks/useRolePermissions";
+import { type NavKey } from "@/shared/permissions";
 
 const navItems: { key: NavKey; href: string; icon: typeof LayoutDashboard; label: string }[] = [
   { key: "dashboard", href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -84,17 +85,19 @@ export default function DashboardLayout({
     }
   }, [hydrated, isAuthenticated, router]);
 
-  const allowedPages = user?.role ? getAllowedPages(user.role) : [];
+  const { pages: allowedPages, loading: permsLoading } = useAllowedPages(user?.role);
   const filteredNavItems = navItems.filter((item) => allowedPages.includes(item.key));
 
-  // Redirect if user navigates to a page they don't have access to
+  // Redirect if the user navigates to a page they're not allowed on.
+  // Wait for permissions to load before evaluating — otherwise the
+  // first render sees an empty allow-list and bounces them.
   useEffect(() => {
-    if (!user?.role) return;
+    if (!user?.role || permsLoading) return;
     const currentKey = pathname.split("/")[1] as NavKey;
-    if (currentKey && !getAllowedPages(user.role).includes(currentKey)) {
+    if (currentKey && !allowedPages.includes(currentKey)) {
       router.push("/dashboard");
     }
-  }, [pathname, user?.role, router]);
+  }, [pathname, user?.role, permsLoading, allowedPages, router]);
 
   const initials = user?.name
     ?.split(" ")

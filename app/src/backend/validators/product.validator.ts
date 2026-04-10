@@ -4,7 +4,7 @@ export const createProductSchema = z.object({
   sku: z.string().min(1),
   hsn: z.string().optional(),
   name: z.string().min(1),
-  categoryId: z.string(),
+  categoryId: z.string().min(1, "Category is required"),
   brand: z.string().optional(),
   size: z.string().optional(),
   color: z.string().optional(),

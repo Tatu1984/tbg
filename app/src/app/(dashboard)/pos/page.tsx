@@ -124,17 +124,6 @@ interface InvoiceSnapshotType {
   bank: BankAccount | undefined;
 }
 
-const FALLBACK_CATEGORIES = [
-  "Helmets",
-  "Riding Jackets",
-  "Riding Gloves",
-  "Riding Boots",
-  "Bike Accessories",
-  "Bike Parts",
-  "Luggage & Bags",
-  "Protection Gear",
-];
-
 // ── Number to words (Indian system) ──────────────────────────────────────
 function numberToWords(num: number): string {
   if (num === 0) return "Zero";
@@ -372,14 +361,21 @@ export default function POSPage() {
   const [submitting, setSubmitting] = useState(false);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
-  // Fetch products from API
+  // Fetch products + categories from API.
+  // Categories come from /api/categories (not derived from products) so the
+  // "Add new product" dialog has real category IDs even on a fresh install.
   const [hasFetchedProducts, setHasFetchedProducts] = useState(false);
   useEffect(() => {
     if (!token || hasFetchedProducts) return;
-    async function loadProducts() {
+    async function loadAll() {
       try {
-        const { data } = await apiClient.get("/products");
-        const productList = data.products || [];
+        const [prodRes, catRes] = await Promise.all([
+          apiClient.get("/products"),
+          apiClient.get<{ categories: { id: string; name: string }[] }>(
+            "/categories"
+          ),
+        ]);
+        const productList = prodRes.data.products || [];
         const mapped: Product[] = productList.map((p: Record<string, unknown>) => ({
           id: p.id as string,
           sku: p.sku as string,
@@ -393,16 +389,8 @@ export default function POSPage() {
           categoryId: p.categoryId as string,
         }));
         setProducts(mapped);
+        setCategories(catRes.data.categories || []);
         setHasFetchedProducts(true);
-
-        // Extract unique categories
-        const cats = productList
-          .map((p: Record<string, unknown>) => p.category as { id: string; name: string })
-          .filter(Boolean);
-        const unique = Array.from(
-          new Map(cats.map((c: { id: string; name: string }) => [c.id, c])).values()
-        ) as { id: string; name: string }[];
-        setCategories(unique);
       } catch {
         // Only show error if this wasn't a silent auth failure
         toast.error("Failed to load products");
@@ -410,7 +398,7 @@ export default function POSPage() {
         setProductsLoading(false);
       }
     }
-    loadProducts();
+    loadAll();
   }, [token, hasFetchedProducts]);
 
   // Customer info
@@ -585,18 +573,39 @@ export default function POSPage() {
     e.preventDefault();
     if (!token) return;
 
-    const sku = newProduct.sku || `BG-NEW-${Date.now().toString(36).toUpperCase()}`;
+    if (!newProduct.name.trim()) {
+      toast.error("Product name is required");
+      return;
+    }
+
     const sellingPrice = Number(newProduct.price);
+    if (!sellingPrice || sellingPrice <= 0) {
+      toast.error("Enter a valid selling price");
+      return;
+    }
+
+    // Resolve category to a real ID. Reject submission if there's no
+    // matching category — sending an empty/unknown id used to surface
+    // as an opaque 500 from a foreign-key violation.
+    const cat = categories.find((c) => c.name === newProduct.category);
+    if (!cat) {
+      toast.error(
+        categories.length === 0
+          ? "No categories available — add one in Products first"
+          : "Please select a valid category"
+      );
+      return;
+    }
+
+    const sku = newProduct.sku || `BG-NEW-${Date.now().toString(36).toUpperCase()}`;
     const mrpVal = Number(newProduct.mrp) || sellingPrice;
-    const categoryName = newProduct.category || "Bike Accessories";
-    const cat = categories.find((c) => c.name === categoryName);
 
     try {
       const { data } = await apiClient.post("/products", {
         sku,
         hsn: newProduct.hsn || undefined,
-        name: newProduct.name,
-        categoryId: cat?.id || categories[0]?.id || "",
+        name: newProduct.name.trim(),
+        categoryId: cat.id,
         costPrice: sellingPrice,
         sellingPrice,
         mrp: mrpVal,
@@ -612,7 +621,7 @@ export default function POSPage() {
         mrp: Number(data.product.mrp),
         gst: Number(data.product.gstPercentage),
         stock: data.product.stock,
-        category: categoryName,
+        category: cat.name,
         categoryId: data.product.categoryId,
       };
 
@@ -630,8 +639,11 @@ export default function POSPage() {
         stock: "1",
       });
       toast.success(`Product "${product.name}" saved & added to invoice`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to create product");
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || (err instanceof Error ? err.message : "Failed to create product");
+      toast.error(msg);
     }
   }
 
@@ -882,9 +894,9 @@ export default function POSPage() {
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
-                        {(categories.length > 0 ? categories.map((c) => c.name) : FALLBACK_CATEGORIES).map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat}
+                        {categories.map((c) => (
+                          <SelectItem key={c.id} value={c.name}>
+                            {c.name}
                           </SelectItem>
                         ))}
                       </SelectContent>

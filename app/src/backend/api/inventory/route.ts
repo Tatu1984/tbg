@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/backend/database/client";
 import { authenticateRequest } from "@/backend/api/middleware";
+import { requirePagePermission } from "@/backend/auth/permissions";
 import { handleError, AppError } from "@/backend/utils/error-handler.util";
 
 const stockTransactionSchema = z.object({
@@ -40,15 +41,8 @@ export async function GET(req: NextRequest) {
 // POST /api/inventory - create stock transaction
 export async function POST(req: NextRequest) {
   try {
-    const auth = await authenticateRequest(req);
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const role = auth.user.role as string;
-    if (!["owner", "manager", "inventory_staff"].includes(role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const auth = await requirePagePermission(req, "inventory");
+    if (auth instanceof NextResponse) return auth;
 
     const body = await req.json();
     const parsed = stockTransactionSchema.safeParse(body);

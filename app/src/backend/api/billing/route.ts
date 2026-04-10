@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/backend/database/client";
 import { createInvoiceSchema } from "@/backend/validators/billing.validator";
 import { authenticateRequest } from "@/backend/api/middleware";
+import { requirePagePermission } from "@/backend/auth/permissions";
 import { handleError, AppError } from "@/backend/utils/error-handler.util";
 
 // GET /api/billing - list invoices
@@ -40,15 +41,8 @@ export async function GET(req: NextRequest) {
 // POST /api/billing - create invoice
 export async function POST(req: NextRequest) {
   try {
-    const auth = await authenticateRequest(req);
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const role = auth.user.role as string;
-    if (!["owner", "manager", "cashier"].includes(role)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const auth = await requirePagePermission(req, "pos");
+    if (auth instanceof NextResponse) return auth;
 
     const body = await req.json();
     const parsed = createInvoiceSchema.safeParse(body);

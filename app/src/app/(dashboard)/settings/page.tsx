@@ -33,27 +33,40 @@ import {
 import {
   type RolePermissions,
   CONFIGURABLE_ROLES,
-  CONFIGURABLE_PAGES,
+  ALL_PAGES as CONFIGURABLE_PAGES,
   ROLE_LABELS,
   NAV_LABELS,
-  getRolePermissions,
-  saveRolePermissions,
-} from "@/config/permissions";
+} from "@/shared/permissions";
+import {
+  useRolePermissions,
+  invalidateRolePermissionsCache,
+} from "@/frontend/hooks/useRolePermissions";
+import { apiClient } from "@/frontend/api/client";
 import { useAuth } from "@/frontend/hooks/useAuth";
 
 export default function SettingsPage() {
   const { isOwner } = useAuth();
   const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const { permissions: fetchedPermissions, loading: permsLoading } =
+    useRolePermissions();
   const [permissions, setPermissions] = useState<RolePermissions | null>(null);
+  const [savingPerms, setSavingPerms] = useState(false);
 
   useEffect(() => {
     setSettings(getStoreSettings());
-    setPermissions(getRolePermissions());
   }, []);
 
-  if (!settings || !permissions) return null;
+  // Sync the local editing state once the fetched permissions arrive.
+  useEffect(() => {
+    if (fetchedPermissions) setPermissions(fetchedPermissions);
+  }, [fetchedPermissions]);
 
-  function togglePermission(role: (typeof CONFIGURABLE_ROLES)[number], page: (typeof CONFIGURABLE_PAGES)[number]) {
+  if (!settings) return null;
+
+  function togglePermission(
+    role: (typeof CONFIGURABLE_ROLES)[number],
+    page: (typeof CONFIGURABLE_PAGES)[number]
+  ) {
     setPermissions((prev) => {
       if (!prev) return prev;
       const current = prev[role];
@@ -64,10 +77,23 @@ export default function SettingsPage() {
     });
   }
 
-  function handleSavePermissions() {
-    if (permissions) {
-      saveRolePermissions(permissions);
+  async function handleSavePermissions() {
+    if (!permissions) return;
+    setSavingPerms(true);
+    try {
+      const { data } = await apiClient.put<{ permissions: RolePermissions }>(
+        "/settings/permissions",
+        { permissions }
+      );
+      invalidateRolePermissionsCache(data.permissions);
       toast.success("Role permissions saved");
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data
+          ?.error || "Failed to save permissions";
+      toast.error(msg);
+    } finally {
+      setSavingPerms(false);
     }
   }
 
@@ -516,41 +542,61 @@ export default function SettingsPage() {
                 <CardTitle className="text-base">Role Access Control</CardTitle>
                 <CardDescription>
                   Configure which pages each role can access. Owner always has full access.
+                  Changes apply to every device once saved.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-3 pr-4 font-medium text-muted-foreground">Page</th>
-                        {CONFIGURABLE_ROLES.map((role) => (
-                          <th key={role} className="text-center py-3 px-4 font-medium text-muted-foreground">
-                            {ROLE_LABELS[role]}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {CONFIGURABLE_PAGES.map((page) => (
-                        <tr key={page} className="border-b last:border-0">
-                          <td className="py-3 pr-4 font-medium">{NAV_LABELS[page]}</td>
-                          {CONFIGURABLE_ROLES.map((role) => (
-                            <td key={role} className="text-center py-3 px-4">
-                              <Switch
-                                checked={permissions[role].includes(page)}
-                                onCheckedChange={() => togglePermission(role, page)}
-                              />
-                            </td>
+                {permsLoading || !permissions ? (
+                  <p className="text-sm text-muted-foreground py-4">
+                    Loading permissions…
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-3 pr-4 font-medium text-muted-foreground">
+                              Page
+                            </th>
+                            {CONFIGURABLE_ROLES.map((role) => (
+                              <th
+                                key={role}
+                                className="text-center py-3 px-4 font-medium text-muted-foreground"
+                              >
+                                {ROLE_LABELS[role]}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {CONFIGURABLE_PAGES.map((page) => (
+                            <tr key={page} className="border-b last:border-0">
+                              <td className="py-3 pr-4 font-medium">
+                                {NAV_LABELS[page]}
+                              </td>
+                              {CONFIGURABLE_ROLES.map((role) => (
+                                <td key={role} className="text-center py-3 px-4">
+                                  <Switch
+                                    checked={permissions[role].includes(page)}
+                                    onCheckedChange={() => togglePermission(role, page)}
+                                  />
+                                </td>
+                              ))}
+                            </tr>
                           ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <Button onClick={handleSavePermissions} className="mt-6">
-                  Save Permissions
-                </Button>
+                        </tbody>
+                      </table>
+                    </div>
+                    <Button
+                      onClick={handleSavePermissions}
+                      className="mt-6"
+                      disabled={savingPerms}
+                    >
+                      {savingPerms ? "Saving…" : "Save Permissions"}
+                    </Button>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

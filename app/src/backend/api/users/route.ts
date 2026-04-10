@@ -3,12 +3,13 @@ import { prisma } from "@/backend/database/client";
 import { createUserSchema, updateUserSchema } from "@/backend/validators/auth.validator";
 import { hashPassword } from "@/backend/utils/hash.util";
 import { authorizeRoles } from "@/backend/api/middleware";
+import { requirePagePermission } from "@/backend/auth/permissions";
 import { handleError, AppError } from "@/backend/utils/error-handler.util";
 
-// GET /api/users - list all users (owner/manager only)
+// GET /api/users - list all users (any role with "users" page access)
 export async function GET(req: NextRequest) {
   try {
-    const auth = await authorizeRoles("owner", "manager")(req);
+    const auth = await requirePagePermission(req, "users");
     if (auth instanceof NextResponse) return auth;
 
     const users = await prisma.user.findMany({

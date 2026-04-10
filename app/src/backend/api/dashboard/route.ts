@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/backend/database/client";
-import { authenticateRequest } from "@/backend/api/middleware";
+import { requirePagePermission } from "@/backend/auth/permissions";
 import { handleError } from "@/backend/utils/error-handler.util";
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = await authenticateRequest(req);
-    if ("error" in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
+    const auth = await requirePagePermission(req, "dashboard");
+    if (auth instanceof NextResponse) return auth;
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);

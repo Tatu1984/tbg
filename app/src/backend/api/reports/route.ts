@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/backend/database/client";
-import { authorizeRoles } from "@/backend/api/middleware";
+import { requirePagePermission } from "@/backend/auth/permissions";
 import { handleError } from "@/backend/utils/error-handler.util";
 
 export async function GET(req: NextRequest) {
   try {
-    const auth = await authorizeRoles("owner", "manager")(req);
+    const auth = await requirePagePermission(req, "reports");
     if (auth instanceof NextResponse) return auth;
 
     const { searchParams } = new URL(req.url);
@@ -140,27 +140,28 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === "category-breakdown") {
-      // Revenue by category from InvoiceItems joined to Product->Category
-      const items = await prisma.invoiceItem.findMany({
-        select: {
-          totalPrice: true,
-          product: { select: { category: { select: { name: true } } } },
-        },
-      });
+      // Aggregate in the database; the previous implementation loaded
+      // every InvoiceItem into JS, which OOMs at scale.
+      const rows = await prisma.$queryRaw<
+        { name: string | null; revenue: string | number }[]
+      >`
+        SELECT c."name" AS name, SUM(ii."totalPrice")::numeric AS revenue
+        FROM "InvoiceItem" ii
+        JOIN "Product" p ON p."id" = ii."productId"
+        LEFT JOIN "Category" c ON c."id" = p."categoryId"
+        GROUP BY c."name"
+        ORDER BY revenue DESC
+      `;
 
-      const map = new Map<string, number>();
-      for (const it of items) {
-        const cat = it.product.category?.name || "Uncategorized";
-        map.set(cat, (map.get(cat) || 0) + Number(it.totalPrice));
-      }
-      const total = Array.from(map.values()).reduce((a, b) => a + b, 0);
-      const breakdown = Array.from(map.entries())
-        .map(([name, revenue]) => ({
-          name,
+      const total = rows.reduce((s, r) => s + Number(r.revenue || 0), 0);
+      const breakdown = rows.map((r) => {
+        const revenue = Number(r.revenue || 0);
+        return {
+          name: r.name || "Uncategorized",
           revenue,
           percentage: total > 0 ? Math.round((revenue / total) * 100) : 0,
-        }))
-        .sort((a, b) => b.revenue - a.revenue);
+        };
+      });
 
       return NextResponse.json({ breakdown, total });
     }
@@ -189,21 +190,22 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === "profit") {
-      // Profit = sum(invoiceItem.totalPrice) - sum(invoiceItem.quantity * product.costPrice)
-      const items = await prisma.invoiceItem.findMany({
-        select: {
-          totalPrice: true,
-          quantity: true,
-          product: { select: { costPrice: true } },
-        },
-      });
+      // Aggregate revenue and cost in the database. Snapshotting cost
+      // at the time of sale would be more accurate, but the schema
+      // doesn't store that — using current costPrice is the best we
+      // can do without changing the model.
+      const rows = await prisma.$queryRaw<
+        { revenue: string | number | null; cost: string | number | null }[]
+      >`
+        SELECT
+          SUM(ii."totalPrice")::numeric AS revenue,
+          SUM(ii."quantity" * p."costPrice")::numeric AS cost
+        FROM "InvoiceItem" ii
+        JOIN "Product" p ON p."id" = ii."productId"
+      `;
 
-      let revenue = 0;
-      let cost = 0;
-      for (const it of items) {
-        revenue += Number(it.totalPrice);
-        cost += Number(it.product.costPrice) * it.quantity;
-      }
+      const revenue = Number(rows[0]?.revenue || 0);
+      const cost = Number(rows[0]?.cost || 0);
       const profit = revenue - cost;
       const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
 
