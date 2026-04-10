@@ -1071,8 +1071,8 @@ export default function POSPage() {
                       const discAmt = getItemDiscountAmount(it);
                       const taxableValue = unitPrice * it.quantity - discAmt;
                       const halfRate = gstRate / 2;
-                      const sgst = isCash ? 0 : taxableValue * halfRate / 100;
-                      const cgst = isCash ? 0 : taxableValue * halfRate / 100;
+                      const sgst = !applyGst ? 0 : taxableValue * halfRate / 100;
+                      const cgst = !applyGst ? 0 : taxableValue * halfRate / 100;
                       const total = taxableValue + sgst + cgst;
 
                       return (
@@ -1115,7 +1115,7 @@ export default function POSPage() {
                           </td>
                           <td className="border border-foreground/80 p-1 text-right">{taxableValue.toFixed(2)}</td>
                           <td className="border border-foreground/80 p-0 text-center">
-                            {isCash ? "-" : (
+                            {!applyGst ? "-" : (
                               <select
                                 className="w-full h-5 text-[10px] text-center bg-transparent border-none outline-none cursor-pointer appearance-none px-0"
                                 value={gstRate}
@@ -1132,9 +1132,9 @@ export default function POSPage() {
                               </select>
                             )}
                           </td>
-                          <td className="border border-foreground/80 p-1 text-right">{isCash ? "-" : sgst.toFixed(2)}</td>
+                          <td className="border border-foreground/80 p-1 text-right">{!applyGst ? "-" : sgst.toFixed(2)}</td>
                           <td className="border border-foreground/80 p-0 text-center">
-                            {isCash ? "-" : (
+                            {!applyGst ? "-" : (
                               <select
                                 className="w-full h-5 text-[10px] text-center bg-transparent border-none outline-none cursor-pointer appearance-none px-0"
                                 value={gstRate}
@@ -1151,7 +1151,7 @@ export default function POSPage() {
                               </select>
                             )}
                           </td>
-                          <td className="border border-foreground/80 p-1 text-right">{isCash ? "-" : cgst.toFixed(2)}</td>
+                          <td className="border border-foreground/80 p-1 text-right">{!applyGst ? "-" : cgst.toFixed(2)}</td>
                           <td className="border border-foreground/80 p-1 text-right font-bold">{total.toFixed(2)}</td>
                           <td className="border border-foreground/80 p-1 text-center">
                             <Button
