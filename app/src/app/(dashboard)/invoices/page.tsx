@@ -113,7 +113,10 @@ export default function InvoiceHistoryPage() {
   }, [search]);
 
   const fetchInvoices = useCallback(async () => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const params: Record<string, string | number> = {
@@ -128,8 +131,11 @@ export default function InvoiceHistoryPage() {
       const { data } = await apiClient.get("/billing", { params });
       setInvoices(data.invoices);
       setTotal(data.total);
-    } catch {
-      toast.error("Failed to load invoices");
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status !== 401) {
+        toast.error("Failed to load invoices");
+      }
     } finally {
       setLoading(false);
     }
